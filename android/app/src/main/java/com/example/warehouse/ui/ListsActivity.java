@@ -2,14 +2,18 @@ package com.example.warehouse.ui;
 
 import android.content.Intent;
 import android.os.Bundle;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.View;
 import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 
+import com.example.warehouse.R;
 import com.example.warehouse.data.api.ApiClient;
 import com.example.warehouse.data.model.InventoryList;
 import com.example.warehouse.databinding.ActivityListsBinding;
@@ -52,6 +56,21 @@ public class ListsActivity extends AppCompatActivity {
                 createLauncher.launch(new Intent(this, CreateListActivity.class)));
 
         loadLists();
+    }
+
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        getMenuInflater().inflate(R.menu.menu_lists, menu);
+        return true;
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
+        if (item.getItemId() == R.id.action_settings) {
+            startActivity(new Intent(this, SettingsActivity.class));
+            return true;
+        }
+        return super.onOptionsItemSelected(item);
     }
 
     @Override
