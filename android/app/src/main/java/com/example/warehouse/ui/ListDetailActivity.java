@@ -1,9 +1,12 @@
 package com.example.warehouse.ui;
 
+import android.content.Intent;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.Toast;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -24,6 +27,17 @@ public class ListDetailActivity extends AppCompatActivity {
     private ItemAdapter adapter;
     private long listId;
 
+    private final ActivityResultLauncher<Intent> scanLauncher =
+            registerForActivityResult(
+                    new ActivityResultContracts.StartActivityForResult(),
+                    result -> {
+                        if (result.getResultCode() == RESULT_OK && result.getData() != null) {
+                            String qr = result.getData().getStringExtra(ScanActivity.EXTRA_QR);
+                            Toast.makeText(this, "Сканировано: " + qr, Toast.LENGTH_SHORT).show();
+                            // TODO: отправить POST /inventory/scan
+                        }
+                    });
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -41,8 +55,10 @@ public class ListDetailActivity extends AppCompatActivity {
         binding.rvItems.setLayoutManager(new LinearLayoutManager(this));
         binding.rvItems.setAdapter(adapter);
 
-        binding.btnScan.setOnClickListener(v ->
-                Toast.makeText(this, "Сканирование QR — следующий блок", Toast.LENGTH_SHORT).show());
+        binding.btnScan.setOnClickListener(v -> {
+            Intent intent = new Intent(this, ScanActivity.class);
+            scanLauncher.launch(intent);
+        });
 
         loadItems();
     }
