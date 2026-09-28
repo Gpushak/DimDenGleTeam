@@ -25,6 +25,7 @@
         <activity android:name=".ui.ListsActivity" android:exported="false" />
         <activity android:name=".ui.ListDetailActivity" android:exported="false" />
         <activity android:name=".ui.ScanActivity" android:exported="false" />
+        <activity android:name=".ui.WeighActivity" android:exported="false" />
 
     </application>
 
