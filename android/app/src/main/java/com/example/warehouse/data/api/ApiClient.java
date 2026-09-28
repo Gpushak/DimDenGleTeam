@@ -1,6 +1,8 @@
 package com.example.warehouse.data.api;
 
-import com.example.warehouse.BuildConfig;
+import android.content.Context;
+
+import com.example.warehouse.data.local.SettingsStore;
 
 import java.util.concurrent.TimeUnit;
 
@@ -11,9 +13,21 @@ import retrofit2.converter.gson.GsonConverterFactory;
 
 public class ApiClient {
     private static Retrofit retrofit;
+    private static String currentBaseUrl;
+    private static Context appContext;
+
+    public static void init(Context ctx) {
+        appContext = ctx.getApplicationContext();
+    }
 
     public static Retrofit get() {
-        if (retrofit == null) {
+        String baseUrl = appContext != null
+                ? new SettingsStore(appContext).getBaseUrl()
+                : "http://10.0.2.2:8000/";
+
+        if (retrofit == null || !baseUrl.equals(currentBaseUrl)) {
+            currentBaseUrl = baseUrl;
+
             HttpLoggingInterceptor log = new HttpLoggingInterceptor();
             log.setLevel(HttpLoggingInterceptor.Level.BODY);
 
@@ -24,7 +38,7 @@ public class ApiClient {
                     .build();
 
             retrofit = new Retrofit.Builder()
-                    .baseUrl(BuildConfig.API_BASE_URL)
+                    .baseUrl(baseUrl)
                     .client(client)
                     .addConverterFactory(GsonConverterFactory.create())
                     .build();
