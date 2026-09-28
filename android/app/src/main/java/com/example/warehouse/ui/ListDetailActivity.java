@@ -1,17 +1,106 @@
 package com.example.warehouse.ui;
 
 import android.os.Bundle;
+import android.view.View;
 import android.widget.Toast;
 
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.recyclerview.widget.LinearLayoutManager;
+
+import com.example.warehouse.data.api.ApiClient;
+import com.example.warehouse.data.model.InventoryItem;
+import com.example.warehouse.databinding.ActivityListDetailBinding;
+
+import java.util.List;
+
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
 
 public class ListDetailActivity extends AppCompatActivity {
+
+    private ActivityListDetailBinding binding;
+    private ItemAdapter adapter;
+    private long listId;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        long listId = getIntent().getLongExtra("list_id", -1);
+        binding = ActivityListDetailBinding.inflate(getLayoutInflater());
+        setContentView(binding.getRoot());
+
+        listId = getIntent().getLongExtra("list_id", -1);
         String listName = getIntent().getStringExtra("list_name");
-        Toast.makeText(this, "Список: " + listName + " (#" + listId + ")", Toast.LENGTH_SHORT).show();
-        finish();
+
+        setTitle(listName != null ? listName : "Список");
+        binding.tvTitle.setText(listName != null ? listName : "Список");
+
+        adapter = new ItemAdapter(item -> confirmDelete(item));
+
+        binding.rvItems.setLayoutManager(new LinearLayoutManager(this));
+        binding.rvItems.setAdapter(adapter);
+
+        binding.btnScan.setOnClickListener(v ->
+                Toast.makeText(this, "Сканирование QR — следующий блок", Toast.LENGTH_SHORT).show());
+
+        loadItems();
+    }
+
+    private void loadItems() {
+        setLoading(true);
+        ApiClient.api().getListItems(listId).enqueue(new Callback<List<InventoryItem>>() {
+            @Override
+            public void onResponse(Call<List<InventoryItem>> call, Response<List<InventoryItem>> response) {
+                setLoading(false);
+                if (response.isSuccessful() && response.body() != null) {
+                    adapter.setData(response.body());
+                } else {
+                    Toast.makeText(ListDetailActivity.this,
+                            "Ошибка загрузки: " + response.code(), Toast.LENGTH_SHORT).show();
+                }
+            }
+
+            @Override
+            public void onFailure(Call<List<InventoryItem>> call, Throwable t) {
+                setLoading(false);
+                Toast.makeText(ListDetailActivity.this,
+                        "Сеть недоступна: " + t.getMessage(), Toast.LENGTH_LONG).show();
+            }
+        });
+    }
+
+    private void confirmDelete(InventoryItem item) {
+        new AlertDialog.Builder(this)
+                .setTitle("Удалить позицию?")
+                .setMessage(item.productName != null ? item.productName : ("Товар #" + item.productId))
+                .setPositiveButton("Удалить", (d, w) -> deleteItem(item))
+                .setNegativeButton("Отмена", null)
+                .show();
+    }
+
+    private void deleteItem(InventoryItem item) {
+        ApiClient.api().deleteItem(item.id).enqueue(new Callback<Void>() {
+            @Override
+            public void onResponse(Call<Void> call, Response<Void> response) {
+                if (response.isSuccessful()) {
+                    adapter.removeItem(item);
+                    Toast.makeText(ListDetailActivity.this, "Удалено", Toast.LENGTH_SHORT).show();
+                } else {
+                    Toast.makeText(ListDetailActivity.this,
+                            "Ошибка удаления: " + response.code(), Toast.LENGTH_SHORT).show();
+                }
+            }
+
+            @Override
+            public void onFailure(Call<Void> call, Throwable t) {
+                Toast.makeText(ListDetailActivity.this,
+                        "Сеть недоступна: " + t.getMessage(), Toast.LENGTH_LONG).show();
+            }
+        });
+    }
+
+    private void setLoading(boolean loading) {
+        binding.progress.setVisibility(loading ? View.VISIBLE : View.GONE);
     }
 }
