@@ -77,6 +77,7 @@ public class LoginActivity extends AppCompatActivity {
     }
 
     private void goToMain() {
-        Toast.makeText(this, "Успешный вход", Toast.LENGTH_SHORT).show();
+        startActivity(new android.content.Intent(this, ListsActivity.class));
+        finish();
     }
 }

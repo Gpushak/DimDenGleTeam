@@ -25,6 +25,9 @@
             </intent-filter>
         </activity>
 
+        <activity android:name=".ui.ListsActivity" android:exported="false" />
+        <activity android:name=".ui.ListDetailActivity" android:exported="false" />
+
     </application>
 
 </manifest>
