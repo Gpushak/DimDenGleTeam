@@ -15,6 +15,7 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 
 import com.example.warehouse.R;
 import com.example.warehouse.data.repo.ListRepository;
+import com.example.warehouse.data.sync.SyncScheduler;
 import com.example.warehouse.databinding.ActivityListsBinding;
 
 public class ListsActivity extends AppCompatActivity {
@@ -64,6 +65,12 @@ public class ListsActivity extends AppCompatActivity {
     public boolean onOptionsItemSelected(@NonNull MenuItem item) {
         if (item.getItemId() == R.id.action_settings) {
             startActivity(new Intent(this, SettingsActivity.class));
+            return true;
+        }
+        if (item.getItemId() == R.id.action_refresh) {
+            SyncScheduler.runNow(this);
+            binding.getRoot().postDelayed(this::loadLists, 1500);
+            Toast.makeText(this, "Синхронизация запущена", Toast.LENGTH_SHORT).show();
             return true;
         }
         return super.onOptionsItemSelected(item);
