@@ -13,6 +13,8 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 
 import com.example.warehouse.data.api.ApiClient;
 import com.example.warehouse.data.model.InventoryItem;
+import com.example.warehouse.data.model.ScanRequest;
+import com.example.warehouse.data.model.ScanResponse;
 import com.example.warehouse.databinding.ActivityListDetailBinding;
 
 import java.util.List;
@@ -33,8 +35,16 @@ public class ListDetailActivity extends AppCompatActivity {
                     result -> {
                         if (result.getResultCode() == RESULT_OK && result.getData() != null) {
                             String qr = result.getData().getStringExtra(ScanActivity.EXTRA_QR);
-                            Toast.makeText(this, "Сканировано: " + qr, Toast.LENGTH_SHORT).show();
-                            // TODO: отправить POST /inventory/scan
+                            if (qr != null) postScan(qr);
+                        }
+                    });
+
+    private final ActivityResultLauncher<Intent> weighLauncher =
+            registerForActivityResult(
+                    new ActivityResultContracts.StartActivityForResult(),
+                    result -> {
+                        if (result.getResultCode() == RESULT_OK) {
+                            loadItems();
                         }
                     });
 
@@ -51,7 +61,6 @@ public class ListDetailActivity extends AppCompatActivity {
         binding.tvTitle.setText(listName != null ? listName : "Список");
 
         adapter = new ItemAdapter(item -> confirmDelete(item));
-
         binding.rvItems.setLayoutManager(new LinearLayoutManager(this));
         binding.rvItems.setAdapter(adapter);
 
@@ -61,6 +70,34 @@ public class ListDetailActivity extends AppCompatActivity {
         });
 
         loadItems();
+    }
+
+    private void postScan(String qr) {
+        setLoading(true);
+        ApiClient.api().scan(new ScanRequest(qr, listId)).enqueue(new Callback<ScanResponse>() {
+            @Override
+            public void onResponse(Call<ScanResponse> call, Response<ScanResponse> response) {
+                setLoading(false);
+                if (response.isSuccessful() && response.body() != null) {
+                    ScanResponse sr = response.body();
+                    Intent i = new Intent(ListDetailActivity.this, WeighActivity.class);
+                    i.putExtra(WeighActivity.EXTRA_SESSION_ID, sr.sessionId);
+                    i.putExtra(WeighActivity.EXTRA_PRODUCT_NAME,
+                            sr.productName != null ? sr.productName : ("Товар #" + sr.productId));
+                    weighLauncher.launch(i);
+                } else {
+                    Toast.makeText(ListDetailActivity.this,
+                            "Ошибка сканирования: " + response.code(), Toast.LENGTH_SHORT).show();
+                }
+            }
+
+            @Override
+            public void onFailure(Call<ScanResponse> call, Throwable t) {
+                setLoading(false);
+                Toast.makeText(ListDetailActivity.this,
+                        "Сеть недоступна: " + t.getMessage(), Toast.LENGTH_LONG).show();
+            }
+        });
     }
 
     private void loadItems() {
