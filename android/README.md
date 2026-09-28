@@ -17,7 +17,7 @@ APK: app/build/outputs/apk/debug/app-debug.apk
 
 ## Настройка сервера
 Адрес API задаётся в `app/build.gradle` в поле `buildConfigField API_BASE_URL`.
-По умолчанию `http://10.0.2.2:8000/` — это адрес хоста из эмулятора Android.
+По умолчанию `http://10.0.2.2:8000/` — адрес хоста из эмулятора Android.
 
 ## Реализовано
 - LoginActivity — авторизация через POST /auth/login
@@ -29,7 +29,6 @@ APK: app/build/outputs/apk/debug/app-debug.apk
 - ListDetailActivity — позиции списка
 - ScanActivity — сканирование QR
 - WeighActivity — отображение веса с сервера
-- WorkManager — фоновая синхронизация
 
 ## Endpoints
 - POST /auth/login
