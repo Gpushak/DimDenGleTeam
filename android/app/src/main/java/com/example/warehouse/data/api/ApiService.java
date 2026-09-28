@@ -1,5 +1,6 @@
 package com.example.warehouse.data.api;
 
+import com.example.warehouse.data.model.CreateListRequest;
 import com.example.warehouse.data.model.InventoryItem;
 import com.example.warehouse.data.model.InventoryList;
 import com.example.warehouse.data.model.LoginRequest;
@@ -24,6 +25,9 @@ public interface ApiService {
 
     @GET("inventory/lists")
     Call<List<InventoryList>> getLists();
+
+    @POST("inventory/lists")
+    Call<InventoryList> createList(@Body CreateListRequest request);
 
     @GET("inventory/lists/{id}/items")
     Call<List<InventoryItem>> getListItems(@Path("id") long listId);
