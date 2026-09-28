@@ -15,9 +15,8 @@ import com.example.warehouse.data.api.ApiClient;
 import com.example.warehouse.data.model.InventoryItem;
 import com.example.warehouse.data.model.ScanRequest;
 import com.example.warehouse.data.model.ScanResponse;
+import com.example.warehouse.data.repo.ListRepository;
 import com.example.warehouse.databinding.ActivityListDetailBinding;
-
-import java.util.List;
 
 import retrofit2.Call;
 import retrofit2.Callback;
@@ -27,6 +26,7 @@ public class ListDetailActivity extends AppCompatActivity {
 
     private ActivityListDetailBinding binding;
     private ItemAdapter adapter;
+    private ListRepository repo;
     private long listId;
 
     private final ActivityResultLauncher<Intent> scanLauncher =
@@ -43,9 +43,7 @@ public class ListDetailActivity extends AppCompatActivity {
             registerForActivityResult(
                     new ActivityResultContracts.StartActivityForResult(),
                     result -> {
-                        if (result.getResultCode() == RESULT_OK) {
-                            loadItems();
-                        }
+                        if (result.getResultCode() == RESULT_OK) loadItems();
                     });
 
     @Override
@@ -53,6 +51,8 @@ public class ListDetailActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         binding = ActivityListDetailBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
+
+        repo = new ListRepository(this);
 
         listId = getIntent().getLongExtra("list_id", -1);
         String listName = getIntent().getStringExtra("list_name");
@@ -102,25 +102,13 @@ public class ListDetailActivity extends AppCompatActivity {
 
     private void loadItems() {
         setLoading(true);
-        ApiClient.api().getListItems(listId).enqueue(new Callback<List<InventoryItem>>() {
-            @Override
-            public void onResponse(Call<List<InventoryItem>> call, Response<List<InventoryItem>> response) {
-                setLoading(false);
-                if (response.isSuccessful() && response.body() != null) {
-                    adapter.setData(response.body());
-                } else {
-                    Toast.makeText(ListDetailActivity.this,
-                            "Ошибка загрузки: " + response.code(), Toast.LENGTH_SHORT).show();
-                }
+        repo.loadItems(listId, (items, fromCache) -> runOnUiThread(() -> {
+            setLoading(false);
+            adapter.setData(items);
+            if (fromCache && items.isEmpty()) {
+                Toast.makeText(this, "Нет данных и нет сети", Toast.LENGTH_SHORT).show();
             }
-
-            @Override
-            public void onFailure(Call<List<InventoryItem>> call, Throwable t) {
-                setLoading(false);
-                Toast.makeText(ListDetailActivity.this,
-                        "Сеть недоступна: " + t.getMessage(), Toast.LENGTH_LONG).show();
-            }
-        });
+        }));
     }
 
     private void confirmDelete(InventoryItem item) {
@@ -138,6 +126,7 @@ public class ListDetailActivity extends AppCompatActivity {
             public void onResponse(Call<Void> call, Response<Void> response) {
                 if (response.isSuccessful()) {
                     adapter.removeItem(item);
+                    repo.deleteItemFromCache(item.id);
                     Toast.makeText(ListDetailActivity.this, "Удалено", Toast.LENGTH_SHORT).show();
                 } else {
                     Toast.makeText(ListDetailActivity.this,
