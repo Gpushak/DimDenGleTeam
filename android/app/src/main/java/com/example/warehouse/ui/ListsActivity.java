@@ -14,20 +14,14 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 
 import com.example.warehouse.R;
-import com.example.warehouse.data.api.ApiClient;
-import com.example.warehouse.data.model.InventoryList;
+import com.example.warehouse.data.repo.ListRepository;
 import com.example.warehouse.databinding.ActivityListsBinding;
-
-import java.util.List;
-
-import retrofit2.Call;
-import retrofit2.Callback;
-import retrofit2.Response;
 
 public class ListsActivity extends AppCompatActivity {
 
     private ActivityListsBinding binding;
     private ListAdapter adapter;
+    private ListRepository repo;
 
     private final ActivityResultLauncher<Intent> createLauncher =
             registerForActivityResult(
@@ -41,6 +35,8 @@ public class ListsActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         binding = ActivityListsBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
+
+        repo = new ListRepository(this);
 
         adapter = new ListAdapter(list -> {
             Intent i = new Intent(this, ListDetailActivity.class);
@@ -81,25 +77,13 @@ public class ListsActivity extends AppCompatActivity {
 
     private void loadLists() {
         setLoading(true);
-        ApiClient.api().getLists().enqueue(new Callback<List<InventoryList>>() {
-            @Override
-            public void onResponse(Call<List<InventoryList>> call, Response<List<InventoryList>> response) {
-                setLoading(false);
-                if (response.isSuccessful() && response.body() != null) {
-                    adapter.setData(response.body());
-                } else {
-                    Toast.makeText(ListsActivity.this,
-                            "Ошибка загрузки: " + response.code(), Toast.LENGTH_SHORT).show();
-                }
+        repo.loadLists((lists, fromCache) -> runOnUiThread(() -> {
+            setLoading(false);
+            adapter.setData(lists);
+            if (fromCache && lists.isEmpty()) {
+                Toast.makeText(this, "Нет данных и нет сети", Toast.LENGTH_SHORT).show();
             }
-
-            @Override
-            public void onFailure(Call<List<InventoryList>> call, Throwable t) {
-                setLoading(false);
-                Toast.makeText(ListsActivity.this,
-                        "Сеть недоступна: " + t.getMessage(), Toast.LENGTH_LONG).show();
-            }
-        });
+        }));
     }
 
     private void setLoading(boolean loading) {
