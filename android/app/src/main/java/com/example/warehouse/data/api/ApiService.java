@@ -4,6 +4,9 @@ import com.example.warehouse.data.model.InventoryItem;
 import com.example.warehouse.data.model.InventoryList;
 import com.example.warehouse.data.model.LoginRequest;
 import com.example.warehouse.data.model.LoginResponse;
+import com.example.warehouse.data.model.ScanRequest;
+import com.example.warehouse.data.model.ScanResponse;
+import com.example.warehouse.data.model.WeighSession;
 
 import java.util.List;
 
@@ -27,4 +30,13 @@ public interface ApiService {
 
     @DELETE("inventory/items/{id}")
     Call<Void> deleteItem(@Path("id") long itemId);
+
+    @POST("inventory/scan")
+    Call<ScanResponse> scan(@Body ScanRequest request);
+
+    @GET("weigh/session/{id}")
+    Call<WeighSession> getWeighSession(@Path("id") long sessionId);
+
+    @POST("weigh/confirm")
+    Call<Void> confirmWeigh(@Body WeighSession session);
 }
