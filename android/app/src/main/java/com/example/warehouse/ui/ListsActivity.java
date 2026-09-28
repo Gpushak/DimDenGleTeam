@@ -5,6 +5,8 @@ import android.os.Bundle;
 import android.view.View;
 import android.widget.Toast;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 
@@ -23,6 +25,13 @@ public class ListsActivity extends AppCompatActivity {
     private ActivityListsBinding binding;
     private ListAdapter adapter;
 
+    private final ActivityResultLauncher<Intent> createLauncher =
+            registerForActivityResult(
+                    new ActivityResultContracts.StartActivityForResult(),
+                    result -> {
+                        if (result.getResultCode() == RESULT_OK) loadLists();
+                    });
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -40,7 +49,7 @@ public class ListsActivity extends AppCompatActivity {
         binding.rvLists.setAdapter(adapter);
 
         binding.fabAdd.setOnClickListener(v ->
-                Toast.makeText(this, "Создание списка — позже", Toast.LENGTH_SHORT).show());
+                createLauncher.launch(new Intent(this, CreateListActivity.class)));
 
         loadLists();
     }
