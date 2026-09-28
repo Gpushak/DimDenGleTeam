@@ -16,17 +16,15 @@
         android:usesCleartextTraffic="true"
         android:theme="@style/Theme.WarehouseApp">
 
-        <activity
-            android:name=".ui.LoginActivity"
-            android:exported="true">
+        <activity android:name=".ui.LoginActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
         <activity android:name=".ui.ListsActivity" android:exported="false" />
         <activity android:name=".ui.ListDetailActivity" android:exported="false" />
+        <activity android:name=".ui.ScanActivity" android:exported="false" />
 
     </application>
 
