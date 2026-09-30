@@ -1,10 +1,14 @@
+import os
 from pathlib import Path
 import sqlite3
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-DB_DIR = BASE_DIR / "data"
-DB_PATH = DB_DIR / "warehouse.db"
+
+# Путь к БД можно переопределить переменной окружения WAREHOUSE_DB
+# (используется docker-compose для монтирования volume с данными).
+DB_PATH = Path(os.getenv("WAREHOUSE_DB", str(BASE_DIR / "data" / "warehouse.db")))
+DB_DIR = DB_PATH.parent
 
 
 def get_db():

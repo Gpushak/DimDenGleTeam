@@ -1,0 +1,97 @@
+# Единый docker-compose для проекта «АСУ складского учёта с весовым модулем и QR-идентификацией»
+#
+# Запуск:
+#   docker compose up --build          # собрать и запустить все сервисы
+#   docker compose up -d api           # только REST API (FastAPI + SQLite)
+#   docker compose down                # остановить и удалить контейнеры (данные останутся в volume)
+#
+# Переменные окружения можно задать в файле .env рядом с этим compose-файлом
+# (образец — .env.example).
+
+name: warehouse-asu
+
+services:
+
+  # ────────────────────────────────────────────────────────────────
+  # REST API (FastAPI + SQLite) — сервер, десктоп и Android обращаются к нему
+  # Swagger UI: http://localhost:${API_PORT:-8000}/docs
+  # ────────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    image: warehouse-api:latest
+    container_name: warehouse-api
+    restart: unless-stopped
+    ports:
+      - "${API_PORT:-8000}:8000"
+    environment:
+      WAREHOUSE_DB: /data/warehouse.db
+    volumes:
+      # Персистентное хранилище БД (не зависит от исходников репозитория)
+      - warehouse-data:/data
+      # Схема БД смонтирована из репозитория — позволяет менять схему без пересборки образа
+      - ./server/db:/app/db:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ────────────────────────────────────────────────────────────────
+  # Весовой модуль (эмулятор Arduino + HX711 поверх Serial-порта)
+  # Требует: firmware/weight_module/Dockerfile (см. README.md, раздел «Docker»)
+  # ────────────────────────────────────────────────────────────────
+  scale-emulator:
+    profiles: ["scale"]
+    build:
+      context: ./firmware
+      dockerfile: weight_module/Dockerfile
+    container_name: warehouse-scale-emulator
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      API_BASE_URL: http://api:8000
+      SERIAL_PORT: ${SERIAL_PORT:-/dev/ttyUSB0}
+    devices:
+      # Проброс физического Serial-порта хоста в контейнер.
+      # Для эмулятора без железа — закомментируйте этот блок.
+      - ${SERIAL_DEVICE:-/dev/ttyUSB0}:${SERIAL_DEVICE:-/dev/ttyUSB0}
+    volumes:
+      - virtual-serial:/dev/virtual-serial
+
+  # ────────────────────────────────────────────────────────────────
+  # Десктопное приложение (QR-коды, печать этикеток, справочник товаров)
+  # Требует: desktop/Dockerfile
+  # ────────────────────────────────────────────────────────────────
+  desktop:
+    profiles: ["desktop"]
+    build:
+      context: ./desktop
+      dockerfile: Dockerfile
+    container_name: warehouse-desktop
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      API_BASE_URL: http://api:8000
+    volumes:
+      - virtual-serial:/dev/virtual-serial
+      # Доступ к X11/Wayland сессии хоста (Linux). См. README.md
+      - /tmp/.X11-unix:/tmp/.X11-unix:ro
+    network_mode: host
+
+  # ────────────────────────────────────────────────────────────────
+  # Мобильное приложение (Android) — НЕ контейнеризируется.
+  # APK собирается отдельно (android/) и указывает на http://<IP-хоста>:${API_PORT:-8000}.
+  # Для доступа с телефона или эмулятора используйте IP машины в LAN,
+  # либо `host.docker.internal` при запуске приложения внутри Docker.
+  # ────────────────────────────────────────────────────────────────
+
+volumes:
+  warehouse-data:
+  virtual-serial:

@@ -28,19 +28,20 @@ warehouse-server/
 ├── data/
 │   └── warehouse.db       # Файл базы данных SQLite (создаётся автоматически)
 ├── Dockerfile
-├── compose.yaml
 └── requirements.txt
 ```
 
 ## Быстрый старт
 
-### Через Docker Compose (рекомендуется)
+### Через единый docker-compose (рекомендуется)
+
+Из корня репозитория:
 
 ```bash
 docker compose up --build
 ```
 
-Сервер будет доступен на `http://localhost:8000`. Данные БД хранятся в папке `./data` (монтируется как volume), схема — в `./db`.
+Сервер будет доступен на `http://localhost:8000`. Данные БД хранятся в named-volume `warehouse-data` (путь в контейнере задаётся переменной `WAREHOUSE_DB`, по умолчанию `/data/warehouse.db`), схема монтируется из `./server/db`.
 
 ### Локально
 

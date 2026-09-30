@@ -2,7 +2,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 
-from app.database import get_db
+from app.database import get_db, DB_PATH
 from app.routers.box_types import router as box_types_router
 from app.routers.item_types import router as item_types_router
 from app.routers.boxes import router as boxes_router
@@ -10,7 +10,6 @@ from app.routers.items import router as items_router
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-DB_PATH = BASE_DIR / "data" / "warehouse.db"
 SCHEMA_PATH = BASE_DIR / "db" / "schema.sql"
 
 
