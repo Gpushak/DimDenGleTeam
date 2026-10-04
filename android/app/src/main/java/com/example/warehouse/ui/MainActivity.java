@@ -1,15 +1,19 @@
 package com.example.warehouse.ui;
 
 import android.content.DialogInterface;
+import android.content.Intent;
 import android.os.Bundle;
 import android.text.InputType;
 import android.view.View;
 import android.widget.EditText;
 import android.widget.Toast;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
+import com.example.warehouse.BuildConfig;
 import com.example.warehouse.adapter.WarehouseAdapter;
 import com.example.warehouse.data.api.ApiClient;
 import com.example.warehouse.data.api.ServerConfig;
@@ -41,6 +45,19 @@ public class MainActivity extends AppCompatActivity {
     /** Путь от корня к текущей ячейке (включая саму текущую). */
     private final Deque<BoxNode> path = new ArrayDeque<>();
 
+    /** Запуск QR-сканера и реакция на его результат. */
+    private final ActivityResultLauncher<Intent> scanLauncher =
+            registerForActivityResult(new ActivityResultContracts.StartActivityForResult(),
+                    result -> {
+                        if (result.getResultCode() != RESULT_OK
+                                || result.getData() == null) {
+                            return;
+                        }
+                        int boxId = result.getData().getIntExtra(ScanActivity.RESULT_BOX_ID, 0);
+                        int itemId = result.getData().getIntExtra(ScanActivity.RESULT_ITEM_ID, 0);
+                        onScanned(itemId, boxId);
+                    });
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -55,6 +72,8 @@ public class MainActivity extends AppCompatActivity {
         binding.btnRefresh.setOnClickListener(v -> loadTree());
         binding.btnUp.setOnClickListener(v -> goUp());
         binding.btnServer.setOnClickListener(v -> showServerDialog());
+        binding.btnScan.setOnClickListener(
+                v -> scanLauncher.launch(new Intent(this, ScanActivity.class)));
         binding.swipeRefresh.setOnRefreshListener(this::loadTree);
 
         binding.list.setOnItemClickListener((parent, view, position, id) -> {
@@ -97,6 +116,87 @@ public class MainActivity extends AppCompatActivity {
     private void openBox(BoxNode box) {
         path.addLast(box);
         loadContents(box);
+    }
+
+    /**
+     * Реакция на результат QR-сканирования.
+     *
+     * Если распознан контейнер — переходим в него и подсвечиваем отсканированную
+     * позицию в списке. Для типа товара навигации нет: просто сообщаем, что
+     * код относится к справочной записи.
+     *
+     * @param itemId идентификатор позиции товара (0 — если не товар)
+     * @param boxId  идентификатор контейнера (0 — если неизвестен)
+     */
+    private void onScanned(int itemId, int boxId) {
+        if (boxId > 0) {
+            BoxNode target = findNode(treeRoots, boxId);
+            if (target != null) {
+                // Пересобираем путь от корня до найденного контейнера,
+                // чтобы кнопка «Вверх» вела по иерархии, а не в пустоту.
+                path.clear();
+                collectPath(treeRoots, boxId, path);
+                loadContents(target);
+                if (itemId > 0) {
+                    highlightItem(itemId);
+                }
+                return;
+            }
+            toast("Контейнер не найден в загруженном дереве — обновите");
+            return;
+        }
+
+        if (itemId > 0) {
+            toast("Позиция товара найдена (ID " + itemId + ")");
+        } else {
+            toast("Отсканирован тип товара — см. сведения в сканере");
+        }
+    }
+
+    /** Ищет контейнер по id в дереве, загруженном из /boxes/tree. */
+    private static BoxNode findNode(List<BoxNode> nodes, int boxId) {
+        if (nodes == null) {
+            return null;
+        }
+        for (BoxNode node : nodes) {
+            if (node.id == boxId) {
+                return node;
+            }
+            BoxNode found = findNode(node.children, boxId);
+            if (found != null) {
+                return found;
+            }
+        }
+        return null;
+    }
+
+    /** Собирает путь от корня до контейнера (для кнопки «Вверх»). */
+    private static boolean collectPath(List<BoxNode> nodes, int boxId, Deque<BoxNode> out) {
+        if (nodes == null) {
+            return false;
+        }
+        for (BoxNode node : nodes) {
+            if (node.id == boxId) {
+                out.addLast(node);
+                return true;
+            }
+            if (collectPath(node.children, boxId, out)) {
+                out.addFirst(node);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Сообщает пользователю позицию товара в открытом контейнере.
+     *
+     * Список в адаптере плоский, а {@code item_id} в {@link WarehouseAdapter.Row}
+     * не хранится, поэтому программно выделить строку нельзя. Вместо этого
+     * показываем понятное уведомление с номером позиции.
+     */
+    private void highlightItem(int itemId) {
+        toast("Позиция #" + itemId + " — в открытом контейнере");
     }
 
     private void goUp() {
@@ -216,14 +316,10 @@ public class MainActivity extends AppCompatActivity {
                     loadTree();
                 })
                 .setNeutralButton("Сбросить", (DialogInterface dialog, int which) -> {
-                    ServerConfig.setBaseUrl(this, "");
-                    // normalize("") вернёт "", поэтому удалим значение напрямую:
-                    getSharedPreferences("server", MODE_PRIVATE)
-                            .edit().remove("base_url").apply();
-                    ApiClient.reset();
+                    ServerConfig.clearBaseUrl(this);
                     ApiClient.init(this);
                     toast("Использован адрес по умолчанию: "
-                            + com.example.warehouse.BuildConfig.API_BASE_URL);
+                            + BuildConfig.API_BASE_URL);
                     loadTree();
                 })
                 .setNegativeButton("Отмена", null)

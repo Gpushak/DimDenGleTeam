@@ -1,22 +1,47 @@
+# Единый источник версий для всего Android-модуля.
+#
+# Раньше файл был удалён как «дублирование build.gradle», но верхнеуровневый
+# build.gradle ссылался на него через alias(libs.plugins.*) — без него Gradle
+# не находил версию плагина. Держим catalog: это стандартный способ, и
+# версии библиотек перечисляются в одном месте.
+
 [versions]
+# AGP 9.4.1 — версия, под которую настроен Gradle 9.6 (gradle-wrapper.properties).
+# Ставить AGP 8.x нельзя: Gradle 9 требует AGP 8.11+ и выше.
 agp = "9.4.1"
 junit = "4.13.2"
-junitVersion = "1.1.5"
-espressoCore = "3.5.1"
+
 appcompat = "1.6.1"
-material = "1.10.0"
-activityKtx = "1.8.0"
+material = "1.11.0"
+activity = "1.8.2"
 constraintlayout = "2.1.4"
+
+retrofit = "2.9.0"
+okhttp = "4.12.0"
+
+camerax = "1.3.1"
+mlkitBarcode = "17.2.0"
+
+swiperefresh = "1.1.0"
 
 [libraries]
 junit = { group = "junit", name = "junit", version.ref = "junit" }
-ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
 appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
-activity-ktx = { group = "androidx.activity", name = "activity-ktx", version.ref = "activityKtx" }
+activity = { group = "androidx.activity", name = "activity", version.ref = "activity" }
 constraintlayout = { group = "androidx.constraintlayout", name = "constraintlayout", version.ref = "constraintlayout" }
+
+retrofit = { group = "com.squareup.retrofit2", name = "retrofit", version.ref = "retrofit" }
+retrofit-converter-gson = { group = "com.squareup.retrofit2", name = "converter-gson", version.ref = "retrofit" }
+okhttp-logging-interceptor = { group = "com.squareup.okhttp3", name = "logging-interceptor", version.ref = "okhttp" }
+
+camera-core = { group = "androidx.camera", name = "camera-core", version.ref = "camerax" }
+camera-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "camerax" }
+camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "camerax" }
+camera-view = { group = "androidx.camera", name = "camera-view", version.ref = "camerax" }
+mlkit-barcode-scanning = { group = "com.google.mlkit", name = "barcode-scanning", version.ref = "mlkitBarcode" }
+
+swiperefreshlayout = { group = "androidx.swiperefreshlayout", name = "swiperefreshlayout", version.ref = "swiperefresh" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
-

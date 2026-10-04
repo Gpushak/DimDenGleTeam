@@ -1,1 +1,29 @@
-(empty)
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Локальная БД (создаётся автоматически, в git не нужна)
+server/data/
+*.db
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Android / Gradle
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+*.apk
+
+# Секреты и локальные настройки
+.env
+
+# OS
+.DS_Store
+Thumbs.db

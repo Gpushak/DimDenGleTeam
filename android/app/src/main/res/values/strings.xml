@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">WarehouseApp</string>
+    <string name="title_scan">Сканирование QR-кода</string>
 </resources>

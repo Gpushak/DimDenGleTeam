@@ -29,9 +29,10 @@ public final class ServerConfig {
         ApiClient.reset();
     }
 
-    public static boolean isOverridden(Context context) {
-        String saved = prefs(context).getString(KEY_BASE_URL, null);
-        return saved != null && !saved.isEmpty();
+    /** Убирает сохранённый адрес — приложение вернётся к значению из BuildConfig. */
+    public static void clearBaseUrl(Context context) {
+        prefs(context).edit().remove(KEY_BASE_URL).apply();
+        ApiClient.reset();
     }
 
     /** Приводит адрес к виду scheme://host[:port]/ — Retrofit требует завершающий «/». */

@@ -65,25 +65,15 @@ def create_box_type(box_type: BoxTypeCreate):
     try:
         with get_db() as db:
             cursor = db.execute(
-                """
-                INSERT INTO box_type (box_type_name)
-                VALUES (?)
-                """,
-                (box_type.name,)
+                "INSERT INTO box_type (box_type_name) VALUES (?)",
+                (box_type.name,),
             )
-
             box_type_id = cursor.lastrowid
+    except sqlite3.IntegrityError as error:
+        # Нарушен UNIQUE(box_type_name) — такое имя уже занято.
+        raise HTTPException(status_code=409, detail=str(error))
 
-    except Exception as error:
-        raise HTTPException(
-            status_code=400,
-            detail=str(error)
-        )
-
-    return {
-        "id": box_type_id,
-        "name": box_type.name
-    }
+    return {"id": box_type_id, "name": box_type.name}
 
 
 @router.delete("/{box_type_id}")

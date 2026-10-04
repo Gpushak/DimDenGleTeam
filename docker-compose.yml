@@ -1,12 +1,17 @@
 # Единый docker-compose для проекта «АСУ складского учёта с весовым модулем и QR-идентификацией»
 #
 # Запуск:
-#   docker compose up --build          # собрать и запустить все сервисы
-#   docker compose up -d api           # только REST API (FastAPI + SQLite)
+#   docker compose up --build          # REST API (FastAPI + SQLite)
+#   docker compose --profile scale up --build   # API + эмулятор весов
 #   docker compose down                # остановить и удалить контейнеры (данные останутся в volume)
 #
 # Переменные окружения можно задать в файле .env рядом с этим compose-файлом
 # (образец — .env.example).
+#
+# Десктопное приложение (desktop/) в Docker НЕ запускается: это GUI на
+# tkinter, которому нужна графическая сессия хоста. Запускайте его нативно:
+#   cd desktop && pip install -r requirements.txt && python main.py
+# Подробнее — в desktop/README.md.
 
 name: warehouse-asu
 
@@ -18,8 +23,11 @@ services:
   # ────────────────────────────────────────────────────────────────
   api:
     build:
-      context: ./server
-      dockerfile: Dockerfile
+      # Контекст — корень репозитория, потому что образу нужен пакет
+      # shared/ (единый протокол весов и QR), лежащий рядом с server/.
+      # Поэтому в server/Dockerfile все COPY начинаются с server/.
+      context: .
+      dockerfile: server/Dockerfile
     image: warehouse-api:latest
     container_name: warehouse-api
     restart: unless-stopped
@@ -40,14 +48,19 @@ services:
       start_period: 10s
 
   # ────────────────────────────────────────────────────────────────
-  # Весовой модуль (эмулятор Arduino + HX711 поверх Serial-порта)
-  # Требует: firmware/weight_module/Dockerfile (см. README.md, раздел «Docker»)
+  # Весовой модуль — эмулятор Serial/HX711, публикующий вес в POST /scale.
+  # Работает в двух режимах:
+  #   • без SERIAL_PORT (по умолчанию) — генерирует тестовые веса,
+  #     позволяет проверить весовой контур без физического железа;
+  #   • с SERIAL_PORT + SERIAL_DEVICE — читает реальный Arduino,
+  #     порт пробрасывается из хоста (см. .env.example).
   # ────────────────────────────────────────────────────────────────
   scale-emulator:
     profiles: ["scale"]
     build:
       context: ./firmware
       dockerfile: weight_module/Dockerfile
+    image: warehouse-scale-emulator:latest
     container_name: warehouse-scale-emulator
     restart: unless-stopped
     depends_on:
@@ -55,35 +68,16 @@ services:
         condition: service_healthy
     environment:
       API_BASE_URL: http://api:8000
-      SERIAL_PORT: ${SERIAL_PORT:-/dev/ttyUSB0}
-    devices:
-      # Проброс физического Serial-порта хоста в контейнер.
-      # Для эмулятора без железа — закомментируйте этот блок.
-      - ${SERIAL_DEVICE:-/dev/ttyUSB0}:${SERIAL_DEVICE:-/dev/ttyUSB0}
-    volumes:
-      - virtual-serial:/dev/virtual-serial
-
-  # ────────────────────────────────────────────────────────────────
-  # Десктопное приложение (QR-коды, печать этикеток, справочник товаров)
-  # Требует: desktop/Dockerfile
-  # ────────────────────────────────────────────────────────────────
-  desktop:
-    profiles: ["desktop"]
-    build:
-      context: ./desktop
-      dockerfile: Dockerfile
-    container_name: warehouse-desktop
-    restart: unless-stopped
-    depends_on:
-      api:
-        condition: service_healthy
-    environment:
-      API_BASE_URL: http://api:8000
-    volumes:
-      - virtual-serial:/dev/virtual-serial
-      # Доступ к X11/Wayland сессии хоста (Linux). См. README.md
-      - /tmp/.X11-unix:/tmp/.X11-unix:ro
-    network_mode: host
+      # Пусто → симуляция тестовых весов (см. firmware/weight_module/emulator.py)
+      SERIAL_PORT: ${SERIAL_PORT:-}
+      SERIAL_BAUD: ${SERIAL_BAUD:-9600}
+      PUBLISH_INTERVAL: ${PUBLISH_INTERVAL:-1.0}
+      SIM_MIN_WEIGHT: ${SIM_MIN_WEIGHT:-0}
+      SIM_MAX_WEIGHT: ${SIM_MAX_WEIGHT:-2500}
+    # Проброс физического Serial-порта нужен ТОЛЬКО для реального Arduino.
+    # Раскомментируйте обе строки и задайте SERIAL_DEVICE в .env:
+    # devices:
+    #   - ${SERIAL_DEVICE:-/dev/ttyUSB0}:/dev/ttyUSB0
 
   # ────────────────────────────────────────────────────────────────
   # Мобильное приложение (Android) — НЕ контейнеризируется.
@@ -94,4 +88,3 @@ services:
 
 volumes:
   warehouse-data:
-  virtual-serial:

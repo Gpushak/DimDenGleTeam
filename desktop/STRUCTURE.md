@@ -1,51 +1,72 @@
-# Структура Python-проекта
+# Структура проекта
 
-## Файлы
+Десктопное приложение — один из трёх клиентов единого Warehouse API.
+Схема БД, формат QR и протокол весов описаны в корневом `README.md`
+и в `server/README.md`.
+
+## Слои
 
 ```
-python_app/
-├── main.py              # Точка входа
-├── models.py            # SQLAlchemy модели (BoxType, Box, ItemType, Item)
-├── database.py          # Инициализация БД, сессии, демо-данные
-├── crud.py              # CRUD операции для всех сущностей
-├── ui/
-│   ├── __init__.py
-│   ├── main_window.py   # Главное окно с деревом и таблицей
-│   └── dialogs.py       # Модальные диалоги (BoxDialog, ItemTypeDialog, ItemDialog)
-├── requirements.txt     # SQLAlchemy>=2.0
-└── README.md            # Документация
+┌─────────────────────────────────────────────┐
+│  main.py — точка входа                      │
+│  проверка API → UI + монитор весов          │
+└───────────────┬─────────────────────────────┘
+                │
+    ┌───────────┴────────────┐
+    │                        │
+┌───▼──────────────────┐  ┌──▼─────────────────────┐
+│  ui/                 │  │  scale.py              │
+│  main_window.py      │  │  Serial → POST /scale  │
+│  dialogs.py          │  └────────────────────────┘
+│  widgets.py          │
+└───┬──────────────────┘
+    │
+┌───▼──────────────────┐        ┌──────────────────┐
+│  crud.py             │───────►│  api_client.py   │
+│  CRUD поверх API    │        │  urllib, JSON    │
+└───┬──────────────────┘        └────────┬─────────┘
+    │                                   │
+┌───▼──────────────────┐                 │
+│  models.py           │        ┌────────▼─────────┐
+│  датаклассы          │        │  Warehouse API   │
+└──────────────────────┘        │  (FastAPI)       │
+                                └──────────────────┘
 ```
 
-## Запуск
+## Правила, которых стоит держаться
 
-```bash
-cd python_app
-pip install -r requirements.txt
-python main.py
-```
+1. **Единственный источник данных — REST API.** `desktop/` не открывает
+   SQLite. Все чтения и записи идут через `crud.py` → `api_client.py`.
 
-При первом запуске создаётся `warehouse.db` с демо-данными.
+2. **`models.py` не содержит бизнес-логики.** Датаклассы отвечают только за
+   разбор ответа API (`from_api`) и вычисляемые свойства (`full_path`,
+   `total_weight_g`).
 
-## Технологии
+3. **`database.py` — только настройки.** Несмотря на имя, модуль не работает
+   с базой: это чтение `API_BASE_URL` и `SERIAL_PORT` из окружения.
 
-- **customtkinter** — современный GUI с тёмной темой
-- **SQLAlchemy 2.0+** — ORM для работы с БД
-- **SQLite** — встроенная база данных
+4. **UI не знает про HTTP.** Диалоги (`ui/dialogs.py`) вызывают `crud.*`
+   и ловят исключения; коды ответов и формат ошибок API до них не доходят.
 
-## Схема БД
+5. **Общий протокол — в `shared/protocol.py`.** Формат QR
+   (`qwentory:<kind>:<id>`) и строки весов (`WEIGHT:<граммы>`) заданы там.
+   Раньше `server/app/protocol.py` содержал копию этой логики, и копии
+   разошлись; теперь это тонкая обёртка над `shared`, а настоящая копия
+   осталась только в `firmware/weight_module/emulator.py` — там она
+   обязательна, потому что контекст сборки образа эмулятора — `firmware/`
+   и пакета `shared/` там нет.
 
-Соответствует требованиям:
-- `box_type` (box_type_id, box_type_name)
-- `box` (box_id, box_name, box_type_id FK, parent_id FK self)
-- `item_type` (item_type_id, item_type_name, weight_g)
-- `item` (item_id, item_type_id FK, box_id FK nullable, quantity, date)
+6. **`desktop/warehouse.db` в репозитории — устаревший артефакт.** Десктоп
+   работает через API и эту базу не открывает; файл добавлен в `.gitignore`
+   вместе с прочими `*.db`.
 
-## Функциональность
+## Связи с другими частями проекта
 
-✓ CRUD для контейнеров (дерево с иерархией)
-✓ CRUD для типов товаров
-✓ CRUD для товаров
-✓ Поиск по типу и расположению
-✓ При удалении контейнера товары остаются с box_id=NULL
-✓ Разделы "Все товары" и "Без расположения"
-✓ Демо-данные при первом запуске
+| Что | Где |
+|-----|-----|
+| Схема БД, ограничения, триггеры | `server/db/schema.sql` |
+| REST API | `server/app/routers/` |
+| Протокол QR и весов | `shared/protocol.py` (обёртка: `server/app/protocol.py`) |
+| Прошивка Arduino | `firmware/weight_module/weight_module.ino` |
+| Эмулятор весов | `firmware/weight_module/emulator.py` |
+| Android-клиент | `android/` |

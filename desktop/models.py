@@ -1,8 +1,15 @@
-"""Модели склада. Поля совпадают с REST API и прежним десктопным кодом."""
+"""Модели склада. Поля соответствуют ответам Warehouse REST API.
+
+Модели — тонкие датаклассы: разбор JSON (`from_api`) и вычисляемые свойства.
+Никакой бизнес-логики и обращений к сети здесь нет.
+
+Замечание о поле `parent`: ссылки между контейнерами проставляет `crud.BoxIndex`
+либо список, полученный из `get_all_boxes`. Одиночный ответ `/boxes/{id}` не
+содержит родителя, поэтому путь (`full_path`) считается по локальному кэшу.
+"""
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import datetime
+from dataclasses import dataclass
 from typing import Optional
 
 
@@ -23,32 +30,28 @@ class Box:
     box_type_id: int
     parent_id: Optional[int] = None
     box_type_name: str = ""
-    box_type: Optional[BoxType] = None
+
+    #: Ссылка на родителя; проставляется из полного списка контейнеров.
     parent: Optional["Box"] = None
-    children: list = field(default_factory=list)
 
     @classmethod
     def from_api(cls, row: dict) -> "Box":
-        box = cls(
+        return cls(
             box_id=row["id"],
             box_name=row["name"],
             box_type_id=row["box_type_id"],
             parent_id=row.get("parent_id"),
             box_type_name=row.get("box_type_name") or "",
         )
-        if box.box_type_name:
-            box.box_type = BoxType(box.box_type_id, box.box_type_name)
-        return box
 
     @property
     def full_path(self) -> str:
+        """«Склад / Стеллаж A / Полка 1»; защищено от зацикливания."""
         parts = []
+        seen = set()
         current: Optional[Box] = self
-        visited = set()
-        while current is not None:
-            if current.box_id in visited:
-                break
-            visited.add(current.box_id)
+        while current is not None and current.box_id not in seen:
+            seen.add(current.box_id)
             parts.append(current.box_name)
             current = current.parent
         return " / ".join(reversed(parts))
@@ -75,41 +78,39 @@ class Item:
     item_type_id: int
     box_id: Optional[int]
     quantity: int
-    date: Optional[datetime] = None
-    item_type: Optional[ItemType] = None
-    box: Optional[Box] = None
     weight_g: Optional[int] = None
     box_name: Optional[str] = None
-    api_total_weight_g: Optional[int] = None
+    total_weight_g_from_api: Optional[int] = None
+    item_type: Optional[ItemType] = None
 
     @classmethod
     def from_api(cls, row: dict) -> "Item":
+        """Собирает позицию из строки /items или /boxes/{id}/contents.
+
+        Имена ключей у этих эндпоинтов различаются (`id` против `item_id`),
+        поэтому оба варианта поддерживаются явно.
+        """
         item = cls(
-            item_id=row["id"],
+            item_id=row.get("id") or row.get("item_id"),
             item_type_id=row["item_type_id"],
             box_id=row.get("box_id"),
             quantity=row["quantity"],
             weight_g=row.get("weight_g"),
             box_name=row.get("box_name"),
-            api_total_weight_g=row.get("total_weight_g"),
+            total_weight_g_from_api=row.get("total_weight_g"),
         )
         item.item_type = ItemType(
-            item_type_id=row["item_type_id"],
+            item_type_id=item.item_type_id,
             item_type_name=row.get("item_type_name") or "—",
-            weight_g=row.get("weight_g"),
+            weight_g=item.weight_g,
         )
-        if row.get("box_id") is not None:
-            item.box = Box(
-                box_id=row["box_id"],
-                box_name=row.get("box_name") or "",
-                box_type_id=0,
-            )
         return item
 
     @property
     def total_weight_g(self) -> int:
-        if self.api_total_weight_g is not None:
-            return self.api_total_weight_g
+        """Суммарный вес позиции; 0, если вес единицы неизвестен."""
+        if self.total_weight_g_from_api is not None:
+            return self.total_weight_g_from_api
         if self.item_type and self.item_type.weight_g:
             return self.item_type.weight_g * self.quantity
         return 0

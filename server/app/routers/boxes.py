@@ -27,36 +27,7 @@ class BoxMove(BaseModel):
     parent_id: int | None = None
 
 
-@router.get("")
-def get_boxes():
-    with get_db() as db:
-        rows = db.execute(
-            """
-            SELECT
-                b.box_id,
-                b.box_name,
-                b.box_type_id,
-                bt.box_type_name,
-                b.parent_id
-            FROM box b
-            JOIN box_type bt ON bt.box_type_id = b.box_type_id
-            ORDER BY b.box_id
-            """
-        ).fetchall()
-
-    return [
-        {
-            "id": row["box_id"],
-            "name": row["box_name"],
-            "box_type_id": row["box_type_id"],
-            "box_type_name": row["box_type_name"],
-            "parent_id": row["parent_id"]
-        }
-        for row in rows
-    ]
-
-
-BOX_TREE_SELECT = """
+BOX_SELECT = """
 SELECT
     b.box_id,
     b.box_name,
@@ -68,19 +39,36 @@ JOIN box_type bt ON bt.box_type_id = b.box_type_id
 """
 
 
+def _row_to_dict(row) -> dict:
+    """Единое представление контейнера для всех эндпоинтов."""
+    return {
+        "id": row["box_id"],
+        "name": row["box_name"],
+        "box_type_id": row["box_type_id"],
+        "box_type_name": row["box_type_name"],
+        "parent_id": row["parent_id"],
+    }
+
+
 def get_box_or_404(db, box_id: int):
+    """Загружает контейнер или выбрасывает 404. Используется и как сериализатор."""
     row = db.execute(
-        BOX_TREE_SELECT + " WHERE b.box_id = ?",
-        (box_id,)
+        BOX_SELECT + " WHERE b.box_id = ?",
+        (box_id,),
     ).fetchone()
 
     if row is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Box not found"
-        )
+        raise HTTPException(status_code=404, detail="Box not found")
 
-    return row
+    return _row_to_dict(row)
+
+
+@router.get("")
+def get_boxes():
+    with get_db() as db:
+        rows = db.execute(BOX_SELECT + " ORDER BY b.box_id").fetchall()
+
+    return [_row_to_dict(row) for row in rows]
 
 
 # ВАЖНО: маршрут /tree должен быть объявлен до /{box_id},
@@ -88,9 +76,7 @@ def get_box_or_404(db, box_id: int):
 @router.get("/tree")
 def get_box_tree():
     with get_db() as db:
-        rows = db.execute(
-            BOX_TREE_SELECT + " ORDER BY b.box_id"
-        ).fetchall()
+        rows = db.execute(BOX_SELECT + " ORDER BY b.box_id").fetchall()
 
     nodes = {
         row["box_id"]: {
@@ -120,91 +106,33 @@ def get_box_tree():
 @router.get("/{box_id}")
 def get_box(box_id: int):
     with get_db() as db:
-        row = db.execute(
-            """
-            SELECT
-                b.box_id,
-                b.box_name,
-                b.box_type_id,
-                bt.box_type_name,
-                b.parent_id
-            FROM box b
-            JOIN box_type bt ON bt.box_type_id = b.box_type_id
-            WHERE b.box_id = ?
-            """,
-            (box_id,)
-        ).fetchone()
-
-    if row is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Box not found"
-        )
-
-    return {
-        "id": row["box_id"],
-        "name": row["box_name"],
-        "box_type_id": row["box_type_id"],
-        "box_type_name": row["box_type_name"],
-        "parent_id": row["parent_id"]
-    }
+        return get_box_or_404(db, box_id)
 
 
 @router.post("")
 def create_box(box: BoxCreate):
     try:
         with get_db() as db:
-
-            # Проверяем существование типа коробки
-            type_exists = db.execute(
-                """
-                SELECT 1
-                FROM box_type
-                WHERE box_type_id = ?
-                """,
-                (box.box_type_id,)
-            ).fetchone()
-
-            if type_exists is None:
-                raise HTTPException(
-                    status_code=404,
-                    detail="Box type not found"
-                )
+            # Тип контейнера должен существовать — иначе клиент узнает
+            # об ошибке сразу, а не из сообщения про нарушение FK.
+            if db.execute(
+                "SELECT 1 FROM box_type WHERE box_type_id = ?",
+                (box.box_type_id,),
+            ).fetchone() is None:
+                raise HTTPException(status_code=404, detail="Box type not found")
 
             # Если указана родительская коробка,
             # проверяем её существование
             if box.parent_id is not None:
-                parent_exists = db.execute(
-                    """
-                    SELECT 1
-                    FROM box
-                    WHERE box_id = ?
-                    """,
-                    (box.parent_id,)
-                ).fetchone()
-
-                if parent_exists is None:
-                    raise HTTPException(
-                        status_code=404,
-                        detail="Parent box not found"
-                    )
+                get_box_or_404(db, box.parent_id)
 
             cursor = db.execute(
                 """
-                INSERT INTO box (
-                    box_name,
-                    box_type_id,
-                    parent_id
-                )
+                INSERT INTO box (box_name, box_type_id, parent_id)
                 VALUES (?, ?, ?)
                 """,
-                (
-                    box.name,
-                    box.box_type_id,
-                    box.parent_id
-                )
+                (box.name, box.box_type_id, box.parent_id),
             )
-
             box_id = cursor.lastrowid
 
     except sqlite3.IntegrityError as error:
@@ -213,12 +141,9 @@ def create_box(box: BoxCreate):
             detail=str(error)
         )
 
-    return {
-        "id": box_id,
-        "name": box.name,
-        "box_type_id": box.box_type_id,
-        "parent_id": box.parent_id
-    }
+    # Возвращаем тот же формат, что и GET /boxes/{id} — в том числе
+    # box_type_name, иначе клиенту пришлось бы делать лишний запрос.
+    return get_box(box_id)
 
 
 @router.delete("/{box_id}")
@@ -287,20 +212,11 @@ def get_box_children(box_id: int):
         get_box_or_404(db, box_id)
 
         rows = db.execute(
-            BOX_TREE_SELECT + " WHERE b.parent_id = ? ORDER BY b.box_id",
-            (box_id,)
+            BOX_SELECT + " WHERE b.parent_id = ? ORDER BY b.box_id",
+            (box_id,),
         ).fetchall()
 
-    return [
-        {
-            "id": row["box_id"],
-            "name": row["box_name"],
-            "box_type_id": row["box_type_id"],
-            "box_type_name": row["box_type_name"],
-            "parent_id": row["parent_id"]
-        }
-        for row in rows
-    ]
+    return [_row_to_dict(row) for row in rows]
 
 
 @router.get("/{box_id}/contents")
@@ -383,7 +299,7 @@ def update_box(box_id: int, update: BoxUpdate):
             new_name = (
                 update.name
                 if update.name is not None
-                else current["box_name"]
+                else current["name"]
             )
 
             new_type_id = (

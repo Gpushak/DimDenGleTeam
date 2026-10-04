@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -17,31 +18,6 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SCHEMA_PATH = BASE_DIR / "db" / "schema.sql"
 
 
-app = FastAPI(
-    title="Warehouse Management API",
-    description="Backend для АСУ складского учёта. Один источник данных для десктопа, Android и весового модуля.",
-    version="0.2.0",
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# CORS: мобильное приложение и другие HTTP-клиенты могут обращаться к API
-# с любого источника (сервер работает без аутентификации).
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
 def _has_schema(db) -> bool:
     row = db.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='box_type'"
@@ -49,13 +25,17 @@ def _has_schema(db) -> bool:
     return row is not None
 
 
-def init_db():
+def init_db() -> None:
+    """Создаёт схему и наполняет её демо-данными при первом запуске.
+
+    Идемпотентна: при повторном старте с уже существующей схемой ничего
+    не делается, а демо-данные добавляются только в пустую БД.
+    """
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    schema = SCHEMA_PATH.read_text(encoding="utf-8")
 
     with get_db() as db:
         if not _has_schema(db):
-            db.executescript(schema)
+            db.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
 
         empty = db.execute("SELECT COUNT(*) AS n FROM box_type").fetchone()["n"] == 0
         if empty:
@@ -63,7 +43,31 @@ def init_db():
             db.commit()
 
 
-init_db()
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # Инициализация БД выполняется при старте приложения, а не при импорте
+    # модуля: иначе uvicorn --reload пересоздавал бы БД на каждое
+    # изменении файла, а любой тестовый импорт запускал бы побочный эффект.
+    init_db()
+    yield
+
+
+app = FastAPI(
+    title="Warehouse Management API",
+    description="Backend для АСУ складского учёта. Один источник данных для десктопа, Android и весового модуля.",
+    version="0.2.0",
+    lifespan=lifespan,
+)
+
+# Сервер работает без аутентификации и обслуживает мобильный клиент и
+# десктоп из локальной сети, поэтому CORS открыт для любых источников.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.include_router(box_types_router)
 app.include_router(item_types_router)

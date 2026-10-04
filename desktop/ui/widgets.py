@@ -11,16 +11,17 @@ import tkinter.ttk as ttk
 import customtkinter as ctk
 
 
-# Палитра тёмной темы приложения (согласована с темой customtkinter 'dark')
-DARK_BG = '#2b2b2b'          # фон приложения / контейнеров
+# Палитра тёмной темы приложения (согласована с темой customtkinter 'dark').
+# Константы используются внутри модуля; наружу отдаются те, что нужны UI.
 DARK_PANEL = '#252525'       # фон панелей и области таблиц
-DARK_FIELD = '#3d3d3d'       # фон полей ввода / строк таблицы
 DARK_HEADER = '#3a3d40'      # фон шапки таблицы
 DARK_TEXT = '#e6e6e6'        # основной текст
-DARK_MUTED = '#999999'       # второстепенный текст
 DARK_BORDER = '#4a4d50'      # границы и разделители колонок
 DARK_SELECTED = '#1f538d'    # выделение строки
-DARK_HOVER = '#325475'       # чередование/наведение строк
+
+# Цвета скроллбаров и строк таблицы — используются только здесь.
+_SCROLLBAR = '#5c5c5c'
+_ROW_ODD = '#2f2f2f'
 
 
 def apply_dark_theme() -> None:
@@ -66,21 +67,21 @@ def apply_dark_theme() -> None:
 
     style.configure(
         'Dark.Vertical.TScrollbar',
-        background='#5c5c5c',
+        background=_SCROLLBAR,
         troughcolor=DARK_PANEL,
         bordercolor=DARK_BORDER,
         arrowcolor=DARK_TEXT,
-        lightcolor='#5c5c5c',
-        darkcolor='#5c5c5c',
+        lightcolor=_SCROLLBAR,
+        darkcolor=_SCROLLBAR,
     )
     style.configure(
         'Dark.Horizontal.TScrollbar',
-        background='#5c5c5c',
+        background=_SCROLLBAR,
         troughcolor=DARK_PANEL,
         bordercolor=DARK_BORDER,
         arrowcolor=DARK_TEXT,
-        lightcolor='#5c5c5c',
-        darkcolor='#5c5c5c',
+        lightcolor=_SCROLLBAR,
+        darkcolor=_SCROLLBAR,
     )
 
 
@@ -166,7 +167,7 @@ class DarkTableFrame(ctk.CTkFrame):
             self.tree.column(col, width=width, minwidth=60, anchor='w', stretch=True)
 
         # Чередование строк для читаемости
-        self.tree.tag_configure('oddrow', background='#2f2f2f')
+        self.tree.tag_configure('oddrow', background=_ROW_ODD)
         self.tree.tag_configure('evenrow', background=DARK_PANEL)
         self._row_count = 0
 

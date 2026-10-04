@@ -28,7 +28,8 @@ def seed_demo_data(db) -> None:
         return cur.lastrowid
 
     main_wh = add_box("Основной склад", "Склад")
-    fuel_wh = add_box("Склад ГСМ", "Склад")
+    # Второй корень без товаров — как в десктопном демо.
+    add_box("Склад ГСМ", "Склад")
     rack_a = add_box("Стеллаж A", "Стеллаж", main_wh)
     rack_b = add_box("Стеллаж B", "Стеллаж", main_wh)
     shelf_a1 = add_box("Полка 1", "Полка", rack_a)
@@ -74,6 +75,3 @@ def seed_demo_data(db) -> None:
             "INSERT INTO item (item_type_id, box_id, quantity) VALUES (?, ?, ?)",
             (item_type_id, box_id, qty),
         )
-
-    # fuel_wh создан как второй корень склада — без товаров, как в десктопном демо
-    _ = fuel_wh

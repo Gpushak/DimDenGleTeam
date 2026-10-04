@@ -3,21 +3,29 @@ import re
 import io
 
 import customtkinter as ctk
+from PIL import Image
 from tkinter import messagebox
 from typing import Optional, List
 
 from api_client import ApiClient, ApiError
 
 import crud
-from models import Box, ItemType, Item
+from qrutil import qr_payload, qr_png_bytes
+from models import Box, Item
 from ui.widgets import (
     apply_dark_theme,
     DarkScrollableFrame,
     DarkTableFrame,
     DARK_PANEL,
     DARK_BORDER,
-    DARK_TEXT,
 )
+
+
+def format_weight(grams: int) -> str:
+    """Граммы в вид «450 г» / «1.25 кг» — общее для таблицы и строки статуса."""
+    if grams >= 1000:
+        return f'{grams / 1000:.2f} кг'
+    return f'{grams} г'
 
 
 class TreeWidget(DarkScrollableFrame):
@@ -285,6 +293,17 @@ class MainWindow:
         ctk.CTkLabel(self.root, textvariable=self.status_var, anchor='w').pack(fill='x', padx=10, pady=(0, 5))
 
     # ------------------------------------------------------------------ data
+    def refresh_items(self):
+        """Перерисовывает таблицу товаров.
+
+        Публичный метод: его вызывает монитор весов (`desktop/main.py`),
+        когда показание изменилось.
+        """
+        try:
+            self._refresh_items()
+        except ApiError as error:
+            self.status_var.set(f'Ошибка обновления: {error}')
+
     def _refresh_all(self):
         try:
             self._refresh_tree()
@@ -300,17 +319,10 @@ class MainWindow:
         item = crud.get_item_by_id(self.client, int(selection[0]))
         if not item:
             return
-        try:
-            from qrutil import qr_payload, qr_png_bytes
-        except Exception as error:
-            messagebox.showerror('QR', str(error))
-            return
 
         payload = qr_payload('item', item.item_id)
         try:
-            png = qr_png_bytes(payload)
-            from PIL import Image
-            pil_image = Image.open(io.BytesIO(png))
+            pil_image = Image.open(io.BytesIO(qr_png_bytes(payload)))
             photo = ctk.CTkImage(light_image=pil_image, dark_image=pil_image, size=(220, 220))
         except Exception as error:
             messagebox.showerror('QR', str(error))
@@ -394,51 +406,56 @@ class MainWindow:
         return base_title
 
     # ------------------------------------------------------------------ items
-    def _collect_current_items(self) -> List[Item]:
+    def _collect_current_items(self, boxes: crud.BoxIndex) -> List[Item]:
+        """Товары для текущего выделения + заголовок раздела."""
         search_query = self.search_var.get().strip()
+
         if search_query:
-            items = crud.search_items(self.client, search_query)
             self.items_header.configure(text=f'Результаты поиска: {search_query}')
-        elif self.selected_box_id is None:
-            items = crud.get_all_items(self.client)
+            return crud.search_items(self.client, search_query, boxes)
+
+        if self.selected_box_id is None:
             self.items_header.configure(text='Все товары')
-        elif self.selected_box_id == -1:
-            items = crud.get_items_without_box(self.client)
+            return crud.get_all_items(self.client)
+
+        if self.selected_box_id == -1:
             self.items_header.configure(text='Товары без расположения')
-        else:
-            box = crud.get_box_by_id(self.client, self.selected_box_id)
-            if box:
-                items = crud.get_items_by_box(self.client, self.selected_box_id, include_children=True)
-                self.items_header.configure(text=f'{box.box_name} — {box.full_path}')
-            else:
-                items = []
-                self.items_header.configure(text='Контейнер не найден')
-        return items
+            return crud.get_items_without_box(self.client)
+
+        box = boxes.get(self.selected_box_id)
+        if box is None:
+            self.items_header.configure(text='Контейнер не найден')
+            return []
+
+        self.items_header.configure(text=f'{box.box_name} — {box.full_path}')
+        return crud.get_items_by_box(self.client, self.selected_box_id, include_children=True)
 
     def _refresh_items(self):
-        items = self._collect_current_items()
+        # Контейнеры загружаются один раз на перерисовку: без этого
+        # вызов full_path() для каждой строки давал бы запрос на каждую.
+        boxes = crud.BoxIndex.load(self.client)
+        items = self._collect_current_items(boxes)
 
         self._current_rows = []
         for item in items:
             type_name = item.item_type.item_type_name if item.item_type else '—'
-            weight = item.total_weight_g
-            weight_str = f'{weight / 1000:.2f} кг' if weight > 1000 else f'{weight} г'
-            location = crud.get_box_full_path(self.client, item.box_id)
-            self._current_rows.append((str(item.item_id),
-                                       (type_name, item.quantity, weight_str, location)))
+            weight_str = format_weight(item.total_weight_g)
+            self._current_rows.append((
+                str(item.item_id),
+                (type_name, item.quantity, weight_str, boxes.full_path(item.box_id)),
+            ))
 
         self._render_items_table()
 
         # Статус
         total_qty = sum(i.quantity for i in items)
         total_weight = sum(i.total_weight_g for i in items)
-        weight_str = f'{total_weight / 1000:.2f} кг' if total_weight > 1000 else f'{total_weight} г'
         scale = ''
         if self.scale_monitor and self.scale_monitor.last_weight is not None:
             scale = f' | Весы: {self.scale_monitor.last_weight:.1f} г'
         self.status_var.set(
-            f'Позиций: {len(items)} | Общее кол-во: {total_qty} | Общий вес: {weight_str}'
-            f'{scale}'
+            f'Позиций: {len(items)} | Общее кол-во: {total_qty} '
+            f'| Общий вес: {format_weight(total_weight)}{scale}'
         )
 
     def _render_items_table(self):

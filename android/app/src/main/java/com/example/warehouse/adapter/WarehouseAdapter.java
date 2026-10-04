@@ -88,8 +88,7 @@ public class WarehouseAdapter extends BaseAdapter {
         if (row.isBox) {
             title.setText(row.box.name);
             String type = row.box.box_type_name != null ? row.box.box_type_name : "Ячейка";
-            int childrenCount = row.box.children != null ? row.box.children.size() : 0;
-            subtitle.setText(type + " · вложенных: " + childrenCount);
+            subtitle.setText(type + " · вложенных: " + row.box.childrenCount());
             icon.setImageDrawable(
                     ContextCompat.getDrawable(context, R.drawable.ic_box));
             chevron.setVisibility(View.VISIBLE);

@@ -29,38 +29,39 @@ class BoxDialog:
         frame = ctk.CTkFrame(self.dialog)
         frame.pack(fill='both', expand=True, padx=10, pady=10)
 
+        # Контейнеры грузим один раз: из них считаются и пути, и исключения.
+        boxes = crud.BoxIndex.load(self.client)
+
         # Родитель
         ctk.CTkLabel(frame, text='Родительский контейнер:').grid(row=0, column=0, sticky='w', pady=5)
         self.parent_var = ctk.StringVar()
         parent_combo = ctk.CTkComboBox(frame, variable=self.parent_var, state='readonly', width=250)
         parent_combo.grid(row=0, column=1, pady=5)
 
-        parents = [('', None)]  # Корень
-        all_boxes = crud.get_all_boxes(self.client)
+        ROOT_LABEL = '— Корень —'
+        candidates = boxes.all()
         if self.mode == 'edit' and self.box:
-            exclude_ids = self._get_descendant_ids(self.box.box_id)
-            exclude_ids.append(self.box.box_id)
-            all_boxes = [b for b in all_boxes if b.box_id not in exclude_ids]
+            # Себя и потомков исключаем: контейнер нельзя сделать потомком
+            # самого себя (сервер вернул бы 409).
+            forbidden = self._descendant_ids(boxes, self.box.box_id)
+            forbidden.add(self.box.box_id)
+            candidates = [b for b in candidates if b.box_id not in forbidden]
 
-        parent_values = ['— Корень —']
-        self._parent_map = {'— Корень —': None}
-        for b in all_boxes:
-            path = b.full_path
-            parent_values.append(path)
-            self._parent_map[path] = b.box_id
-
-        parent_combo.configure(values=parent_values)
+        self._parent_map = {ROOT_LABEL: None}
+        self._parent_map.update({boxes.full_path(b.box_id): b.box_id for b in candidates})
+        parent_combo.configure(values=list(self._parent_map))
 
         if self.mode == 'edit' and self.box:
-            current_parent_path = self.box.parent.full_path if self.box.parent else '— Корень —'
-            self.parent_var.set(current_parent_path)
+            current = boxes.get(self.box.parent_id)
+            self.parent_var.set(boxes.full_path(current.box_id) if current else ROOT_LABEL)
         elif default_parent_id is not None:
-            for path, bid in self._parent_map.items():
-                if bid == default_parent_id:
-                    self.parent_var.set(path)
-                    break
+            self.parent_var.set(
+                boxes.full_path(default_parent_id)
+                if default_parent_id in self._parent_map.values()
+                else ROOT_LABEL
+            )
         else:
-            self.parent_var.set('— Корень —')
+            self.parent_var.set(ROOT_LABEL)
 
         # Название
         ctk.CTkLabel(frame, text='Название:').grid(row=1, column=0, sticky='w', pady=5)
@@ -82,8 +83,9 @@ class BoxDialog:
         type_combo.configure(values=type_values)
         self._type_map = {bt.box_type_name: bt.box_type_id for bt in box_types}
 
-        if self.mode == 'edit' and self.box and self.box.box_type:
-            self.type_var.set(self.box.box_type.box_type_name)
+        current_type = self.box.box_type_name if (self.mode == 'edit' and self.box) else ''
+        if current_type and current_type in self._type_map:
+            self.type_var.set(current_type)
         elif box_types:
             self.type_var.set(box_types[0].box_type_name)
 
@@ -93,12 +95,17 @@ class BoxDialog:
         ctk.CTkButton(btn_frame, text='Сохранить', command=self._save, width=100).pack(side='left', padx=5)
         ctk.CTkButton(btn_frame, text='Отмена', command=self.dialog.destroy, width=100).pack(side='left', padx=5)
 
-    def _get_descendant_ids(self, box_id: int):
-        result = []
-        children = crud.get_child_boxes(self.client, box_id)
-        for child in children:
-            result.append(child.box_id)
-            result.extend(self._get_descendant_ids(child.box_id))
+    @staticmethod
+    def _descendant_ids(boxes: crud.BoxIndex, box_id: int) -> set:
+        """Все потомки контейнера (обход в ширину по загруженному индексу)."""
+        result = set()
+        queue = list(boxes.children_of(box_id))
+        while queue:
+            child = queue.pop()
+            if child.box_id in result:
+                continue
+            result.add(child.box_id)
+            queue.extend(boxes.children_of(child.box_id))
         return result
 
     def _save(self):
@@ -218,24 +225,19 @@ class ItemDialog:
         type_combo = ctk.CTkComboBox(frame, variable=self.type_var, state='readonly', width=280)
         type_combo.grid(row=0, column=1, pady=5)
 
-        item_types = crud.get_all_item_types(self.client)
-        type_values = []
-        self._type_map = {}
-        for it in item_types:
-            label = f'{it.item_type_name} ({it.weight_g}г)' if it.weight_g else it.item_type_name
-            type_values.append(label)
-            self._type_map[label] = it.item_type_id
+        def label_for(item_type: ItemType) -> str:
+            return f'{item_type.item_type_name} ({item_type.weight_g}г)' if item_type.weight_g \
+                else item_type.item_type_name
 
-        type_combo.configure(values=type_values)
+        item_types = crud.get_all_item_types(self.client)
+        self._type_map = {label_for(t): t.item_type_id for t in item_types}
+        type_combo.configure(values=list(self._type_map))
 
         if self.mode == 'edit' and self.item and self.item.item_type:
-            it = self.item.item_type
-            label = f'{it.item_type_name} ({it.weight_g}г)' if it.weight_g else it.item_type_name
-            self.type_var.set(label)
+            current = label_for(self.item.item_type)
+            self.type_var.set(current if current in self._type_map else '')
         elif item_types:
-            it = item_types[0]
-            label = f'{it.item_type_name} ({it.weight_g}г)' if it.weight_g else it.item_type_name
-            self.type_var.set(label)
+            self.type_var.set(label_for(item_types[0]))
 
         # Контейнер
         ctk.CTkLabel(frame, text='Расположение:').grid(row=1, column=0, sticky='w', pady=5)
@@ -243,27 +245,25 @@ class ItemDialog:
         box_combo = ctk.CTkComboBox(frame, variable=self.box_var, state='readonly', width=280)
         box_combo.grid(row=1, column=1, pady=5)
 
-        boxes_options = [('Без расположения', None)]
-        all_boxes = crud.get_all_boxes(self.client)
-        for b in all_boxes:
-            boxes_options.append((b.full_path, b.box_id))
+        NO_BOX_LABEL = 'Без расположения'
+        boxes = crud.BoxIndex.load(self.client)
 
-        box_values = [b[0] for b in boxes_options]
-        box_combo.configure(values=box_values)
-        self._box_map = {b[0]: b[1] for b in boxes_options}
+        self._box_map = {NO_BOX_LABEL: None}
+        self._box_map.update({boxes.full_path(b.box_id): b.box_id for b in boxes.all()})
+        box_combo.configure(values=list(self._box_map))
 
         if self.mode == 'edit' and self.item:
-            if self.item.box:
-                self.box_var.set(self.item.box.full_path)
-            else:
-                self.box_var.set('Без расположения')
+            # Путь берём из индекса: ответ позиции содержит лишь имя
+            # контейнера, но не цепочку родителей.
+            self.box_var.set(boxes.full_path(self.item.box_id))
         elif default_box_id is not None:
-            for path, bid in boxes_options:
-                if bid == default_box_id:
-                    self.box_var.set(path)
-                    break
+            self.box_var.set(
+                boxes.full_path(default_box_id)
+                if default_box_id in self._box_map.values()
+                else NO_BOX_LABEL
+            )
         else:
-            self.box_var.set('Без расположения')
+            self.box_var.set(NO_BOX_LABEL)
 
         # Количество
         ctk.CTkLabel(frame, text='Количество:').grid(row=2, column=0, sticky='w', pady=5)

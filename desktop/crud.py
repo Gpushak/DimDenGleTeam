@@ -1,19 +1,83 @@
-"""CRUD через REST API. Сигнатуры сохранены, чтобы UI не переписывать с нуля."""
+"""CRUD поверх REST API Warehouse.
+
+Модуль не знает про HTTP-детали: вызывающий код работает с моделями из
+`models.py`, а сетевые ошибки приходят как `ApiError`.
+
+Загрузка контейнеров
+--------------------
+Получить путь контейнера (`Box.full_path`) можно только зная всю цепочку
+родителей, поэтому для этого нужен весь список `/boxes`. Чтобы не делать
+по одному запросу на каждую строку таблицы, вводится `BoxIndex` — кэш
+контейнеров на одну операцию перерисовки:
+
+    boxes = crud.BoxIndex.load(client)
+    location = boxes.full_path(item.box_id)
+
+Каждый метод ниже, которому нужны контейнеры, принимает готовый `BoxIndex`
+либо загружает свой (однократно) — но никогда не делает запрос на позицию.
+"""
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from api_client import ApiClient, ApiError
 from models import Box, BoxType, Item, ItemType
 
+NO_LOCATION = "Без расположения"
 
-def _link_boxes(boxes: List[Box]) -> List[Box]:
-    by_id = {box.box_id: box for box in boxes}
-    for box in boxes:
-        if box.parent_id is not None:
-            box.parent = by_id.get(box.parent_id)
-    return boxes
 
+class BoxIndex:
+    """Контейнеры и пути к ним, загруженные одним запросом к /boxes."""
+
+    def __init__(self, boxes: List[Box]):
+        self._boxes: Dict[int, Box] = {box.box_id: box for box in boxes}
+
+        # Проставляем ссылки на родителей, чтобы `Box.full_path` работал
+        # и в crud, и в диалогах (им нужен путь до корня).
+        for box in boxes:
+            if box.parent_id is not None:
+                box.parent = self._boxes.get(box.parent_id)
+
+        self._paths: Dict[int, str] = {}
+
+    @classmethod
+    def load(cls, client: ApiClient) -> "BoxIndex":
+        return cls([Box.from_api(row) for row in client.get("/boxes")])
+
+    def get(self, box_id: Optional[int]) -> Optional[Box]:
+        return self._boxes.get(box_id) if box_id is not None else None
+
+    def all(self) -> List[Box]:
+        return list(self._boxes.values())
+
+    def children_of(self, box_id: Optional[int]) -> List[Box]:
+        """Непосредственные потомки контейнера (None — корневые контейнеры)."""
+        return [box for box in self._boxes.values() if box.parent_id == box_id]
+
+    def full_path(self, box_id: Optional[int]) -> str:
+        """Путь «Склад / Стеллаж A / Полка 1» либо «Без расположения»."""
+        if box_id is None:
+            return NO_LOCATION
+        cached = self._paths.get(box_id)
+        if cached is not None:
+            return cached
+
+        # Путь собираем с защитой от цикла: сервер запрещает зацикливание,
+        # но повреждённые данные не должны подвешивать UI.
+        parts: List[str] = []
+        seen = set()
+        current: Optional[Box] = self._boxes.get(box_id)
+        while current is not None and current.box_id not in seen:
+            seen.add(current.box_id)
+            parts.append(current.box_name)
+            current = current.parent
+
+        path = " / ".join(reversed(parts)) if parts else NO_LOCATION
+        self._paths[box_id] = path
+        return path
+
+
+# ──────────────────────────────────────────────────────────── контейнеры
 
 def get_all_box_types(client: ApiClient) -> List[BoxType]:
     return [BoxType.from_api(row) for row in client.get("/box-types")]
@@ -24,29 +88,17 @@ def add_box_type(client: ApiClient, name: str) -> BoxType:
 
 
 def get_all_boxes(client: ApiClient) -> List[Box]:
-    return _link_boxes([Box.from_api(row) for row in client.get("/boxes")])
-
-
-def get_root_boxes(client: ApiClient) -> List[Box]:
-    return [box for box in get_all_boxes(client) if box.parent_id is None]
-
-
-def get_child_boxes(client: ApiClient, parent_id: Optional[int]) -> List[Box]:
-    if parent_id is None:
-        return get_root_boxes(client)
-    return [box for box in get_all_boxes(client) if box.parent_id == parent_id]
+    """Все контейнеры со связанными родителями (нужно для диалогов)."""
+    return BoxIndex.load(client).all()
 
 
 def get_box_by_id(client: ApiClient, box_id: int) -> Optional[Box]:
     try:
-        box = Box.from_api(client.get(f"/boxes/{box_id}"))
+        return Box.from_api(client.get(f"/boxes/{box_id}"))
     except ApiError as error:
         if error.status == 404:
             return None
         raise
-    by_id = {b.box_id: b for b in get_all_boxes(client)}
-    current = by_id.get(box.box_id, box)
-    return current
 
 
 def add_box(client: ApiClient, name: str, box_type_id: int, parent_id: Optional[int]) -> Box:
@@ -64,23 +116,18 @@ def update_box(
     box_type_id: int,
     parent_id: Optional[int],
 ) -> None:
+    """Обновляет контейнер: сначала реквизиты, затем родителя (отдельный эндпоинт)."""
     client.patch(f"/boxes/{box_id}", {"name": name, "box_type_id": box_type_id})
     client.post(f"/boxes/{box_id}/move", {"parent_id": parent_id})
 
 
 def delete_box(client: ApiClient, box_id: int) -> int:
+    """Удаляет контейнер; возвращает, сколько позиций осталось без расположения."""
     result = client.delete(f"/boxes/{box_id}") or {}
     return int(result.get("unboxed") or 0)
 
 
-def get_box_full_path(client: ApiClient, box_id: Optional[int]) -> str:
-    if box_id is None:
-        return "Без расположения"
-    box = get_box_by_id(client, box_id)
-    if not box:
-        return "Без расположения"
-    return box.full_path
-
+# ──────────────────────────────────────────────────────── типы товаров
 
 def get_all_item_types(client: ApiClient) -> List[ItemType]:
     return [ItemType.from_api(row) for row in client.get("/item-types")]
@@ -94,35 +141,37 @@ def update_item_type(client: ApiClient, item_type_id: int, name: str, weight_g: 
     client.patch(f"/item-types/{item_type_id}", {"name": name, "weight_g": weight_g})
 
 
+# ──────────────────────────────────────────────────────────────── товары
+
 def get_item_by_id(client: ApiClient, item_id: int) -> Optional[Item]:
     try:
-        item = Item.from_api(client.get(f"/items/{item_id}"))
+        return Item.from_api(client.get(f"/items/{item_id}"))
     except ApiError as error:
         if error.status == 404:
             return None
         raise
-    _attach_boxes(client, [item])
-    return item
 
 
 def get_all_items(client: ApiClient) -> List[Item]:
-    items = [Item.from_api(row) for row in client.get("/items")]
-    _attach_boxes(client, items)
-    return items
+    return [Item.from_api(row) for row in client.get("/items")]
 
 
-def get_items_by_box(client: ApiClient, box_id: int, include_children: bool = True) -> List[Item]:
-    items = [
+def get_items_by_box(
+    client: ApiClient,
+    box_id: int,
+    include_children: bool = True,
+) -> List[Item]:
+    return [
         Item.from_api(row)
-        for row in client.get("/items", {"box_id": box_id, "include_children": str(include_children).lower()})
+        for row in client.get("/items", {
+            "box_id": box_id,
+            "include_children": str(include_children).lower(),
+        })
     ]
-    _attach_boxes(client, items)
-    return items
 
 
 def get_items_without_box(client: ApiClient) -> List[Item]:
-    items = [Item.from_api(row) for row in client.get("/items", {"unboxed": "true"})]
-    return items
+    return [Item.from_api(row) for row in client.get("/items", {"unboxed": "true"})]
 
 
 def add_item(client: ApiClient, item_type_id: int, box_id: Optional[int], quantity: int) -> Item:
@@ -151,19 +200,20 @@ def delete_item(client: ApiClient, item_id: int) -> None:
     client.delete(f"/items/{item_id}")
 
 
-def search_items(client: ApiClient, query: str) -> List[Item]:
+# ──────────────────────────────────────────────────────────────── поиск
+
+def search_items(client: ApiClient, query: str, boxes: BoxIndex) -> List[Item]:
+    """Фильтрует товары по типу товара или по расположению."""
     needle = query.lower().strip()
-    result = []
-    for item in get_all_items(client):
-        type_name = (item.item_type.item_type_name if item.item_type else "").lower()
-        location = get_box_full_path(client, item.box_id).lower()
-        if needle in type_name or needle in location:
-            result.append(item)
-    return result
+    if not needle:
+        return []
+
+    return [
+        item for item in get_all_items(client)
+        if needle in _item_type_name(item).lower()
+        or needle in boxes.full_path(item.box_id).lower()
+    ]
 
 
-def _attach_boxes(client: ApiClient, items: List[Item]) -> None:
-    boxes = {box.box_id: box for box in get_all_boxes(client)}
-    for item in items:
-        if item.box_id is not None and item.box_id in boxes:
-            item.box = boxes[item.box_id]
+def _item_type_name(item: Item) -> str:
+    return item.item_type.item_type_name if item.item_type else ""
