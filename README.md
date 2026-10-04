@@ -56,3 +56,51 @@ Android-приложение в Docker не запускается: APK соби
   - при сборке: `./gradlew assembleDebug -PapiHost=192.168.1.50 -PapiPort=8000` (или переменные окружения `API_HOST` / `API_PORT`).
 
 Путь к базе данных внутри контейнера задаётся переменной `WAREHOUSE_DB` (по умолчанию `/data/warehouse.db`, примонтирован volume). При локальном запуске без Docker используется `server/data/warehouse.db`.
+
+## Доступ к серверу извне (Tailscale)
+
+Сервер развёрнут на `asu-23gddprojserver` (Ubuntu 26.04, Docker). Доступ к нему
+из локальной сети — по адресу `http://192.168.0.9:8000`. Чтобы разработчики
+Android и десктопа могли работать с сервером **из любой сети** (не обязательно
+рядом с ним), используется **Tailscale** — приватная VPN-сеть (tailnet). Сервер
+при этом **не выставлен в интернет**: к нему могут подключиться только участники
+tailnet, поэтому аутентификация API не требуется.
+
+Адреса сервера в tailnet:
+
+| Что | Значение |
+|-----|----------|
+| Tailscale IP | `100.95.192.75` |
+| MagicDNS-имя | `warehouse-server.tail96180b.ts.net` |
+
+### Что сделать разработчику (Android / десктоп)
+
+1. Установить Tailscale: https://tailscale.com/download (Windows / Linux / Android — есть в Play Store).
+2. Войти в tailnet тем же аккаунтом, что и у сервера.
+3. Проверить доступ: открыть `http://warehouse-server.tail96180b.ts.net:8000/docs` (Swagger) — должна загрузиться документация API.
+
+После этого указать адрес в клиенте:
+- **Android**: при сборке `./gradlew assembleDebug -PapiHost=warehouse-server.tail96180b.ts.net -PapiPort=8000`, либо прямо в приложении — кнопка **«Сервер»** на главном экране (адрес сохраняется между запусками).
+- **Десктоп**: переменная окружения `API_BASE_URL=http://warehouse-server.tail96180b.ts.net:8000` (подробнее — `desktop/README.md`).
+
+### Состояние сервера
+
+- `tailscaled` — служба systemd, включена автозагрузка (`enabled`), поднимается при загрузке Ubuntu.
+- Контейнер `warehouse-api` — политика перезапуска `unless-stopped`.
+- Docker-том `warehouse-data` хранит БД (`/data/warehouse.db`) и переживает пересборку образа.
+
+### Обслуживание (на сервере)
+
+```bash
+ssh gustavo@192.168.0.9
+cd ~/warehouse-server
+
+docker compose ps                 # статус
+docker compose logs -f api        # логи API
+docker compose up -d --build      # пересобрать и применить изменения
+docker compose --profile scale up -d   # добавить эмулятор весов
+docker compose down               # остановить
+
+sudo tailscale status             # состояние VPN
+sudo systemctl restart tailscaled # перезапустить VPN
+```
