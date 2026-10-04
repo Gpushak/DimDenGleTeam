@@ -4,6 +4,7 @@ __pycache__/
 *.egg-info/
 .venv/
 venv/
+.pytest_cache/
 
 # Локальная БД (создаётся автоматически, в git не нужна)
 server/data/
@@ -23,6 +24,9 @@ android/local.properties
 
 # Секреты и локальные настройки
 .env
+
+# Временные файлы агента (SSH-хелперы и т.п.)
+.agent_tmp/
 
 # OS
 .DS_Store

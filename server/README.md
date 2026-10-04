@@ -8,28 +8,43 @@ Backend для АСУ складского учёта: REST API на **FastAPI**
 
 - Python 3.12
 - FastAPI + Uvicorn
-- SQLite (файл БД, без внешнего сервера БД)
+- SQLite (файл БД, без внешнего сервера БД), доступ через `sqlite3` без ORM
 - Docker / Docker Compose
+- pytest + httpx — тесты (`tests/`)
 
 ## Структура проекта
 
+Сервер лежит в папке `server/` внутри общего репозитория (рядом — `shared/`,
+`desktop/`, `android/`, `firmware/`).
+
 ```
-warehouse-server/
+server/
 ├── app/
-│   ├── main.py            # Точка входа FastAPI, инициализация БД
-│   ├── database.py        # Подключение к SQLite (get_db)
+│   ├── main.py            # Точка входа FastAPI, lifespan -> init_db
+│   ├── database.py        # Подключение к SQLite (get_db, db_session)
+│   ├── migrations.py      # Версия схемы (PRAGMA user_version) и миграции
+│   ├── protocol.py        # Тонкая обёртка над shared/protocol.py
+│   ├── seed.py            # Демо-данные склада при первом запуске
 │   └── routers/
 │       ├── box_types.py   # CRUD типов коробок
-│       ├── boxes.py       # Коробки: дерево, содержимое, перемещение
 │       ├── item_types.py  # CRUD типов предметов
-│       └── items.py       # Предметы: учёт количества, размещение в коробках
+│       ├── boxes.py       # Коробки: дерево, содержимое, перемещение, удаление
+│       ├── items.py       # Предметы: учёт количества, размещение в коробках
+│       ├── scale.py       # Текущее показание весов (в памяти процесса)
+│       └── lookup.py      # Разбор QR-кода и поиск сущности
 ├── db/
 │   └── schema.sql         # Схема БД (таблицы, индексы, триггеры)
 ├── data/
 │   └── warehouse.db       # Файл базы данных SQLite (создаётся автоматически)
+├── tests/                 # Тесты API (pytest)
 ├── Dockerfile
-└── requirements.txt
+├── requirements.txt
+└── requirements-dev.txt   # Плюс pytest/httpx для разработки
 ```
+
+Пакет `shared/` (единый протокол QR и весов) лежит уровнем выше `server/` — отсюда
+в Dockerfile задан `PYTHONPATH=/app`, а `app/protocol.py` дополнительно находит его
+сам, чтобы `uvicorn app.main:app` работал из папки `server/` без ручной настройки.
 
 ## Быстрый старт
 
@@ -45,6 +60,8 @@ docker compose up --build
 
 ### Локально
 
+Из папки `server/` (пакет `shared/` подключается автоматически):
+
 ```bash
 python -m venv .venv
 source .venv/bin/activate
@@ -53,6 +70,18 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
 При первом запуске база `data/warehouse.db` создаётся автоматически из `db/schema.sql`.
+Схема применяется только к пустой базе; в дальнейшем изменения применяются миграциями
+(`app/migrations.py`, версия хранится в `PRAGMA user_version` и видна в `/health`).
+
+## Тесты
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest            # из папки server/
+```
+
+Тесты поднимают приложение через `TestClient` на временной БД и не требуют
+запущенного сервера.
 
 ## Документация API
 
@@ -99,7 +128,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 | POST   | `/boxes`                    | Создать коробку (`{"name", "box_type_id", "parent_id?"}`) |
 | PATCH  | `/boxes/{id}`               | Изменить имя / тип коробки                       |
 | POST   | `/boxes/{id}/move`          | Переместить коробку (`{"parent_id": ... \| null}` — null = корень) |
-| DELETE | `/boxes/{id}`               | Удалить коробку (каскадно удаляет вложенные)     |
+| DELETE | `/boxes/{id}`               | Удалить коробку каскадно; предметы из удалённого поддерева переносятся в «без коробки» (при совпадении типа количества суммируются) |
 
 ### Предметы (`/items`)
 
@@ -114,11 +143,14 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 ### Весы (`/scale`)
 
 Последнее показание хранится в памяти процесса (не в БД) — это текущее
-состояние весов, а не история взвешиваний.
+состояние весов, а не история взвешиваний. Из этого следуют два ограничения:
+значение теряется при перезапуске и рассыпается при нескольких воркерах uvicorn
+(поэтому сервис запускается одним воркером). Ответ также содержит `stale: true`,
+если показание старше 5 секунд — чтобы клиент не принял старый вес за текущий.
 
 | Метод  | Путь       | Описание                                                  |
 |--------|------------|-----------------------------------------------------------|
-| GET    | `/scale`   | Текущее показание: `{weight_g, updated_at, source}`        |
+| GET    | `/scale`   | Текущее показание: `{weight_g, updated_at, source, stale}` |
 | POST   | `/scale`   | Принять показание (`{"weight_g": 1200}` или `{"line": "WEIGHT:1200.00"}`) |
 | DELETE | `/scale`   | Сбросить показание                                        |
 

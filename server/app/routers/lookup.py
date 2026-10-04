@@ -1,9 +1,10 @@
 from fastapi import APIRouter, HTTPException
 
+from app.database import db_session
 from app.protocol import parse_qr_payload
-from app.routers.boxes import get_box, get_box_contents
-from app.routers.item_types import get_item_type
-from app.routers.items import get_item
+from app.routers.boxes import BOX_SELECT, _row_to_dict, get_box_contents_payload
+from app.routers.item_types import ITEM_TYPE_SELECT_BY_ID
+from app.routers.items import ITEM_SELECT, item_row_to_dict
 
 
 router = APIRouter(tags=["Lookup"])
@@ -20,12 +21,39 @@ def lookup(code: str):
 
     kind, entity_id = parsed
 
-    if kind == "item":
-        return {"kind": "item", "item": get_item(entity_id)}
-    if kind == "type":
-        return {"kind": "type", "item_type": get_item_type(entity_id)}
-    return {
-        "kind": "box",
-        "box": get_box(entity_id),
-        "contents": get_box_contents(entity_id),
-    }
+    # Один endpoint — одно соединение с БД: сущность и (для коробки) её
+    # содержимое читаются в рамках одной сессии, а не в нескольких.
+    with db_session() as db:
+        if kind == "item":
+            row = db.execute(
+                ITEM_SELECT + " WHERE i.item_id = ?",
+                (entity_id,),
+            ).fetchone()
+            if row is None:
+                raise HTTPException(status_code=404, detail="Item not found")
+            return {"kind": "item", "item": item_row_to_dict(row)}
+
+        if kind == "type":
+            row = db.execute(ITEM_TYPE_SELECT_BY_ID, (entity_id,)).fetchone()
+            if row is None:
+                raise HTTPException(status_code=404, detail="Item type not found")
+            return {
+                "kind": "type",
+                "item_type": {
+                    "id": row["item_type_id"],
+                    "name": row["item_type_name"],
+                    "weight_g": row["weight_g"],
+                },
+            }
+
+        box_row = db.execute(
+            BOX_SELECT + " WHERE b.box_id = ?",
+            (entity_id,),
+        ).fetchone()
+        if box_row is None:
+            raise HTTPException(status_code=404, detail="Box not found")
+        return {
+            "kind": "box",
+            "box": _row_to_dict(box_row),
+            "contents": get_box_contents_payload(db, entity_id),
+        }

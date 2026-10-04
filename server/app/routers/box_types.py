@@ -3,7 +3,7 @@ import sqlite3
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from app.database import get_db
+from app.database import db_session
 
 
 router = APIRouter(
@@ -18,7 +18,7 @@ class BoxTypeCreate(BaseModel):
 
 @router.get("")
 def get_box_types():
-    with get_db() as db:
+    with db_session() as db:
         rows = db.execute(
             """
             SELECT box_type_id, box_type_name
@@ -38,7 +38,7 @@ def get_box_types():
 
 @router.get("/{box_type_id}")
 def get_box_type(box_type_id: int):
-    with get_db() as db:
+    with db_session() as db:
         row = db.execute(
             """
             SELECT box_type_id, box_type_name
@@ -63,15 +63,18 @@ def get_box_type(box_type_id: int):
 @router.post("")
 def create_box_type(box_type: BoxTypeCreate):
     try:
-        with get_db() as db:
+        with db_session() as db:
             cursor = db.execute(
                 "INSERT INTO box_type (box_type_name) VALUES (?)",
                 (box_type.name,),
             )
             box_type_id = cursor.lastrowid
     except sqlite3.IntegrityError as error:
-        # Нарушен UNIQUE(box_type_name) — такое имя уже занято.
-        raise HTTPException(status_code=409, detail=str(error))
+        # Нарушен UNIQUE(box_type_name) — такое имя уже занято. Текст SQLite
+        # клиенту не отдаём: он зависит от версии движка и не является API.
+        if "UNIQUE" not in str(error).upper():
+            raise
+        raise HTTPException(status_code=409, detail="Box type name already exists")
 
     return {"id": box_type_id, "name": box_type.name}
 
@@ -79,7 +82,7 @@ def create_box_type(box_type: BoxTypeCreate):
 @router.delete("/{box_type_id}")
 def delete_box_type(box_type_id: int):
     try:
-        with get_db() as db:
+        with db_session() as db:
             cursor = db.execute(
                 """
                 DELETE FROM box_type

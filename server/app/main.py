@@ -4,7 +4,8 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.database import get_db, DB_PATH
+from app.database import db_session, DB_PATH
+from app.migrations import apply_schema, get_version, SCHEMA_VERSION
 from app.routers.box_types import router as box_types_router
 from app.routers.item_types import router as item_types_router
 from app.routers.boxes import router as boxes_router
@@ -18,29 +19,21 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SCHEMA_PATH = BASE_DIR / "db" / "schema.sql"
 
 
-def _has_schema(db) -> bool:
-    row = db.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='box_type'"
-    ).fetchone()
-    return row is not None
-
-
 def init_db() -> None:
-    """Создаёт схему и наполняет её демо-данными при первом запуске.
+    """Создаёт/обновляет схему БД и наполняет её демо-данными при первом запуске.
 
-    Идемпотентна: при повторном старте с уже существующей схемой ничего
-    не делается, а демо-данные добавляются только в пустую БД.
+    Идемпотентна: схема применяется только к пустой базе, а существующая
+    обновляется через миграции (app/migrations.py). Демо-данные добавляются
+    только в базу, где ещё нет ни одного типа коробки.
     """
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
-    with get_db() as db:
-        if not _has_schema(db):
-            db.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+    with db_session() as db:
+        apply_schema(db, SCHEMA_PATH.read_text(encoding="utf-8"))
 
         empty = db.execute("SELECT COUNT(*) AS n FROM box_type").fetchone()["n"] == 0
         if empty:
             seed_demo_data(db)
-            db.commit()
 
 
 @asynccontextmanager
@@ -88,11 +81,14 @@ def root():
 
 @app.get("/health")
 def health():
-    with get_db() as db:
+    with db_session() as db:
         db.execute("SELECT 1")
+        schema_version = get_version(db)
 
     return {
         "status": "ok",
         "database": "ok",
         "database_path": str(DB_PATH),
+        "schema_version": schema_version,
+        "schema_version_expected": SCHEMA_VERSION,
     }

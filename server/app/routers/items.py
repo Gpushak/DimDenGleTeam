@@ -1,10 +1,9 @@
-
 import sqlite3
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.database import get_db
+from app.database import db_session
 
 
 router = APIRouter(
@@ -72,12 +71,24 @@ LEFT JOIN box b ON b.box_id = i.box_id
 """
 
 
+def _fetch_item_row(db, item_id: int):
+    """Строка ITEM_SELECT по id — используется и для чтения, и для ответа
+    сразу после записи, чтобы не открывать второе соединение."""
+    return db.execute(
+        ITEM_SELECT + " WHERE i.item_id = ?",
+        (item_id,)
+    ).fetchone()
+
+
 @router.get("")
 def get_items(
     box_id: int | None = None,
     include_children: bool = False,
     unboxed: bool = False,
 ):
+    # Порядок фильтров значим: `unboxed` — отдельный режим «предметы вне коробок»,
+    # поэтому при unboxed=true параметр box_id игнорируется (осознанно, раньше это
+    # тоже было так). include_children имеет смысл только вместе с box_id.
     query = ITEM_SELECT
     params: list = []
 
@@ -101,7 +112,7 @@ def get_items(
 
     query += " ORDER BY i.item_id"
 
-    with get_db() as db:
+    with db_session() as db:
         rows = db.execute(query, params).fetchall()
 
     return [item_row_to_dict(row) for row in rows]
@@ -109,11 +120,8 @@ def get_items(
 
 @router.get("/{item_id}")
 def get_item(item_id: int):
-    with get_db() as db:
-        row = db.execute(
-            ITEM_SELECT + " WHERE i.item_id = ?",
-            (item_id,)
-        ).fetchone()
+    with db_session() as db:
+        row = _fetch_item_row(db, item_id)
 
     if row is None:
         raise HTTPException(
@@ -126,9 +134,9 @@ def get_item(item_id: int):
 
 @router.post("")
 def create_item(item: ItemCreate):
+    created_id = None
     try:
-        with get_db() as db:
-
+        with db_session() as db:
             # Проверяем существование типа товара
             type_exists = db.execute(
                 "SELECT 1 FROM item_type WHERE item_type_id = ?",
@@ -153,7 +161,11 @@ def create_item(item: ItemCreate):
                 (item.item_type_id, item.box_id, item.quantity)
             )
 
-            item_id = cursor.lastrowid
+            created_id = cursor.lastrowid
+            assert created_id is not None, "INSERT в item не вернул идентификатор"
+            # Читаем результат в том же соединении — так не открывается
+            # второе подключение (и не возникает read-your-writes гонки).
+            row = _fetch_item_row(db, created_id)
 
     except sqlite3.IntegrityError:
         raise HTTPException(
@@ -164,7 +176,7 @@ def create_item(item: ItemCreate):
             )
         )
 
-    return get_item(item_id)
+    return item_row_to_dict(row)
 
 
 @router.patch("/{item_id}")
@@ -178,7 +190,7 @@ def update_item(item_id: int, update: ItemUpdate):
         )
 
     try:
-        with get_db() as db:
+        with db_session() as db:
             current = db.execute(
                 """
                 SELECT item_id, box_id, item_type_id
@@ -232,6 +244,8 @@ def update_item(item_id: int, update: ItemUpdate):
                 )
             )
 
+            row = _fetch_item_row(db, item_id)
+
     except sqlite3.IntegrityError:
         raise HTTPException(
             status_code=409,
@@ -241,12 +255,12 @@ def update_item(item_id: int, update: ItemUpdate):
             )
         )
 
-    return get_item(item_id)
+    return item_row_to_dict(row)
 
 
 @router.delete("/{item_id}")
 def delete_item(item_id: int):
-    with get_db() as db:
+    with db_session() as db:
         cursor = db.execute(
             "DELETE FROM item WHERE item_id = ?",
             (item_id,)

@@ -1,15 +1,23 @@
 import sqlite3
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
-from app.database import get_db
+from app.database import db_session
 
 
 router = APIRouter(
     prefix="/item-types",
     tags=["Item types"]
 )
+
+#: Общий SELECT для одного типа предмета (используется и в /item-types/{id},
+#: и в /lookup через один и тот же набор полей).
+ITEM_TYPE_SELECT_BY_ID = """
+    SELECT item_type_id, item_type_name, weight_g
+    FROM item_type
+    WHERE item_type_id = ?
+"""
 
 
 class ItemTypeCreate(BaseModel):
@@ -18,13 +26,17 @@ class ItemTypeCreate(BaseModel):
 
 
 class ItemTypeUpdate(BaseModel):
+    # extra="forbid" — чтобы опечатка в имени поля давала 422, а не молча
+    # игнорировалась; тот же подход используется в ItemUpdate.
+    model_config = ConfigDict(extra="forbid")
+
     name: str | None = None
     weight_g: int | None = Field(default=None, ge=0)
 
 
 @router.get("")
 def get_item_types():
-    with get_db() as db:
+    with db_session() as db:
         rows = db.execute(
             """
             SELECT item_type_id, item_type_name, weight_g
@@ -45,15 +57,8 @@ def get_item_types():
 
 @router.get("/{item_type_id}")
 def get_item_type(item_type_id: int):
-    with get_db() as db:
-        row = db.execute(
-            """
-            SELECT item_type_id, item_type_name, weight_g
-            FROM item_type
-            WHERE item_type_id = ?
-            """,
-            (item_type_id,)
-        ).fetchone()
+    with db_session() as db:
+        row = db.execute(ITEM_TYPE_SELECT_BY_ID, (item_type_id,)).fetchone()
 
     if row is None:
         raise HTTPException(
@@ -71,7 +76,7 @@ def get_item_type(item_type_id: int):
 @router.post("")
 def create_item_type(item_type: ItemTypeCreate):
     try:
-        with get_db() as db:
+        with db_session() as db:
             cursor = db.execute(
                 """
                 INSERT INTO item_type (item_type_name, weight_g)
@@ -97,14 +102,17 @@ def create_item_type(item_type: ItemTypeCreate):
 
 @router.patch("/{item_type_id}")
 def update_item_type(item_type_id: int, update: ItemTypeUpdate):
-    if update.name is None and "weight_g" not in update.model_fields_set:
+    # Именно model_fields_set, а не `is None`: так «поле не передали» отличается
+    # от «передали null». Иначе сбросить вес предмета на «неизвестно» было бы
+    # невозможно — трактовка «None значит не передано» здесь ломала бы PATCH.
+    if not update.model_fields_set:
         raise HTTPException(
             status_code=400,
             detail="Nothing to update: provide name and/or weight_g",
         )
 
     try:
-        with get_db() as db:
+        with db_session() as db:
             current = db.execute(
                 "SELECT item_type_id, item_type_name, weight_g FROM item_type WHERE item_type_id = ?",
                 (item_type_id,),
@@ -112,7 +120,11 @@ def update_item_type(item_type_id: int, update: ItemTypeUpdate):
             if current is None:
                 raise HTTPException(status_code=404, detail="Item type not found")
 
-            new_name = update.name if update.name is not None else current["item_type_name"]
+            new_name = (
+                update.name
+                if "name" in update.model_fields_set and update.name is not None
+                else current["item_type_name"]
+            )
             new_weight = (
                 update.weight_g
                 if "weight_g" in update.model_fields_set
@@ -134,7 +146,7 @@ def update_item_type(item_type_id: int, update: ItemTypeUpdate):
 @router.delete("/{item_type_id}")
 def delete_item_type(item_type_id: int):
     try:
-        with get_db() as db:
+        with db_session() as db:
             cursor = db.execute(
                 """
                 DELETE FROM item_type

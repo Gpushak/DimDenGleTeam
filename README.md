@@ -37,9 +37,11 @@ docker compose up --build # REST API доступен на http://localhost:8000
 |--------|---------|----------|
 | `api` | (по умолчанию) | FastAPI + SQLite, том `warehouse-data` для БД, healthcheck `/health` |
 | `scale-emulator` | `scale` | Эмулятор весового модуля (Serial-порт Arduino/HX711 → API) |
-| `desktop` | `desktop` | Десктопное приложение (QR-коды, этикетки, справочник) |
 
-Запуск опциональных сервисы — через profiles, например:
+Десктопное приложение (`desktop/`) в Docker **не запускается** — это GUI, которому
+нужна графическая сессия хоста. Запускается нативно (см. `desktop/README.md`).
+
+Запуск опциональных сервисов — через profiles, например:
 
 ```bash
 docker compose --profile scale up --build

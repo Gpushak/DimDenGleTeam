@@ -1,11 +1,16 @@
-PRAGMA foreign_keys = ON;
+-- Схема БД. Применяется один раз к пустой базе (версия user_version = 1),
+-- см. app/migrations.py. Все объекты создаются через IF NOT EXISTS, чтобы
+-- повторный прогон не падал.
+--
+-- PRAGMA foreign_keys здесь намеренно НЕ выставляется: это настройка
+-- соединения, а не базы. Её включает get_db() при каждом подключении.
 
-CREATE TABLE box_type (
+CREATE TABLE IF NOT EXISTS box_type (
     box_type_id   INTEGER PRIMARY KEY,
     box_type_name TEXT NOT NULL UNIQUE
 );
 
-CREATE TABLE box (
+CREATE TABLE IF NOT EXISTS box (
     box_id       INTEGER PRIMARY KEY,
     box_name     TEXT NOT NULL,
     box_type_id  INTEGER NOT NULL REFERENCES box_type(box_type_id) ON DELETE RESTRICT,
@@ -14,20 +19,20 @@ CREATE TABLE box (
     UNIQUE (parent_id, box_name)
 );
 
-CREATE UNIQUE INDEX ux_box_root_name
+CREATE UNIQUE INDEX IF NOT EXISTS ux_box_root_name
     ON box(box_name)
     WHERE parent_id IS NULL;
 
-CREATE INDEX idx_box_parent ON box(parent_id);
-CREATE INDEX idx_box_type   ON box(box_type_id);
+CREATE INDEX IF NOT EXISTS idx_box_parent ON box(parent_id);
+CREATE INDEX IF NOT EXISTS idx_box_type   ON box(box_type_id);
 
-CREATE TABLE item_type (
+CREATE TABLE IF NOT EXISTS item_type (
     item_type_id   INTEGER PRIMARY KEY,
     item_type_name TEXT NOT NULL UNIQUE,
     weight_g       INTEGER CHECK (weight_g IS NULL OR weight_g >= 0)
 );
 
-CREATE TABLE item (
+CREATE TABLE IF NOT EXISTS item (
     item_id      INTEGER PRIMARY KEY,
     item_type_id INTEGER NOT NULL REFERENCES item_type(item_type_id) ON DELETE RESTRICT,
     box_id       INTEGER REFERENCES box(box_id) ON DELETE SET NULL,
@@ -35,14 +40,16 @@ CREATE TABLE item (
     UNIQUE (box_id, item_type_id)
 );
 
-CREATE UNIQUE INDEX ux_item_unboxed
+CREATE UNIQUE INDEX IF NOT EXISTS ux_item_unboxed
     ON item(item_type_id)
     WHERE box_id IS NULL;
 
-CREATE INDEX idx_item_type ON item(item_type_id);
-CREATE INDEX idx_item_box  ON item(box_id);
+CREATE INDEX IF NOT EXISTS idx_item_type ON item(item_type_id);
+CREATE INDEX IF NOT EXISTS idx_item_box  ON item(box_id);
 
-CREATE TRIGGER trg_box_no_cycle
+-- Запрет цикла в дереве коробок: новая вершина не может оказаться своим же
+-- потомком. Срабатывает как IntegrityError при UPDATE parent_id.
+CREATE TRIGGER IF NOT EXISTS trg_box_no_cycle
 BEFORE UPDATE OF parent_id ON box
 FOR EACH ROW
 WHEN NEW.parent_id IS NOT NULL
