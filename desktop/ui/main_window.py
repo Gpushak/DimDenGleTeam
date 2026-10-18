@@ -107,7 +107,6 @@ class TreeWidget(DarkScrollableFrame):
             else:
                 btn.configure(fg_color='transparent',
                               text_color=self._text_color())
-        self._schedule_redraw()
 
     def set_on_select(self, callback):
         self.on_select_callback = callback

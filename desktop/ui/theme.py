@@ -26,7 +26,6 @@ class ThemePalette:
     selected_text: str    # текст на выделении
     row_alt: str          # альтернативная (чётная) строка таблицы
     hover: str            # подсветка строк дерева при наведении
-    scrollbar: str        # ползунок скроллбара
 
 
 LIGHT = ThemePalette(
@@ -40,7 +39,6 @@ LIGHT = ThemePalette(
     selected_text='#ffffff',
     row_alt='#f2f5f9',
     hover='#e3e7ec',
-    scrollbar='#b9bec5',
 )
 
 DARK = ThemePalette(
@@ -54,7 +52,6 @@ DARK = ThemePalette(
     selected_text='#ffffff',
     row_alt='#2c2d30',
     hover='#3a3d41',
-    scrollbar='#5c5c5c',
 )
 
 PALETTES = {'light': LIGHT, 'dark': DARK}
@@ -117,7 +114,7 @@ def _walk(widget: tk.Misc):
 
 
 def apply_ttk_theme() -> None:
-    """Настроить стили ttk (Treeview, Scrollbar) под текущую тему."""
+    """Настроить стили ttk (Treeview) под текущую тему."""
     pal = palette()
     style = ttk.Style()
     try:
@@ -136,6 +133,17 @@ def apply_ttk_theme() -> None:
         darkcolor=pal.panel_bg,
         relief='flat',
     )
+    # Разделители между столбцами: рисуем рамкой ячейки ``::text``
+    # (borderwidth + orient='vertical' + bordercolor) — линии живут внутри
+    # таблицы, не перекрывают текст и не требуют canvas-оверлеев.
+    try:
+        style.element_options('Treeview.cell')
+        style.configure('Treeview.Cell',
+                        borderwidth=1, relief='solid',
+                        bordercolor=pal.border, lightcolor=pal.border,
+                        darkcolor=pal.border)
+    except tk.TclError:
+        pass
     style.configure(
         'App.Treeview.Heading',
         background=pal.header_bg,
@@ -147,6 +155,14 @@ def apply_ttk_theme() -> None:
         relief='flat',
         padding=(8, 6),
     )
+    try:
+        style.element_options('Treeheading.cell')
+        style.configure('Treeview.HeadingCell',
+                        borderwidth=1, relief='solid',
+                        bordercolor=pal.border, lightcolor=pal.border,
+                        darkcolor=pal.border)
+    except tk.TclError:
+        pass
     style.map(
         'App.Treeview',
         background=[('selected', pal.selected)],
@@ -158,13 +174,3 @@ def apply_ttk_theme() -> None:
         foreground=[('active', pal.text)],
     )
 
-    for orient in ('Vertical', 'Horizontal'):
-        style.configure(
-            f'App.{orient}.TScrollbar',
-            background=pal.scrollbar,
-            troughcolor=pal.panel_bg,
-            bordercolor=pal.border,
-            arrowcolor=pal.text,
-            lightcolor=pal.scrollbar,
-            darkcolor=pal.scrollbar,
-        )
