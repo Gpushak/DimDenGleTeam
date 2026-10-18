@@ -34,10 +34,20 @@ def format_weight(grams: int) -> str:
 class TreeWidget(DarkScrollableFrame):
     """Виджет дерева контейнеров.
 
-    Узлы хранятся плоским списком: для каждого контейнера создаётся строка
-    с кнопкой-переключателем (▼/▶/•) и кнопкой выбора. Дочерние узлы
-    вставляются сразу после родителя, поэтому вложенные контейнеры
-    отображаются полностью.
+    Плоская модель без ttk.Treeview: каждому контейнеру соответствует
+    строка (кнопка-переключатель ▼/▶/• + кнопка выбора).
+
+    Порядок строк задаётся не сортировкой по id, а явным списком обхода
+    ``_order`` — узлы добавляются строго «родитель раньше потомков», и при
+    любой перерисовке ряды переупаковываются именно в этом порядке. Так
+    дерево не «переезжает» при обновлении данных или смене темы.
+
+    Сворачивание работает рекурсивно: у свёрнутого узла скрыты потомки
+    всех уровней, а при раскрытии родителя его дочерние узлы показываются
+    со своим собственным состоянием (ранее свёрнутые остаются свёрнутыми).
+    Состояние раскрытия живёт отдельно от виджетов (``_expanded_state``),
+    поэтому переживает пересборку дерева (``clear`` + повторное добавление
+    узлов) после CRUD-операций.
 
     Цвета узлов зависят от текущей темы: при событии ``<<ThemeChanged>>``
     все кнопки перекрашиваются.
@@ -47,8 +57,14 @@ class TreeWidget(DarkScrollableFrame):
 
     def __init__(self, master, **kwargs):
         super().__init__(master, **kwargs)
-        # box_id -> запись узла
+        # box_id -> запись узла (row/btn/toggle/level/has_children)
         self.nodes: dict = {}
+        # Порядок обхода дерева: родитель раньше потомков.
+        self._order: List = []
+        # Сколько специальных узлов в начале _order (Все товары, Без расположения).
+        self._special_count = 0
+        # box_id -> развёрнут ли узел; сохраняется между пересборками.
+        self._expanded_state: dict = {}
         self.selected_box_id: Optional[int] = None
         self.on_select_callback = None
 
@@ -97,9 +113,28 @@ class TreeWidget(DarkScrollableFrame):
         self.on_select_callback = callback
 
     def clear(self):
+        """Удалить строки и записи узлов.
+
+        Порядок обхода (``_order``) не сбрасывается: ``begin_build`` /
+        ``finish_build`` вызываются вокруг пересборки и гарантируют, что
+        список всегда соответствует добавленным узлам. Состояние раскрытия
+        сохраняется между пересборками — свёрнутые ветки остаются свёрнутыми
+        после CRUD-операций; вычеркнуть мёртвый id можно через ``forget_box``.
+        """
         for widget in self.winfo_children():
             widget.destroy()
         self.nodes.clear()
+
+    # ------------------------------------------------------------- пересборка
+    def begin_build(self):
+        """Начать пересборку дерева (сбрасывает порядок обхода)."""
+        self._order = []
+        self._special_count = 0
+
+    def finish_build(self):
+        """Завершить пересборку: применить видимость и обновить прокрутку."""
+        self._apply_visibility()
+        self._sync_scrollregion()
 
     # ------------------------------------------------------------------ API
     def add_special_node(self, node_id, text):
@@ -108,7 +143,7 @@ class TreeWidget(DarkScrollableFrame):
         btn = ctk.CTkButton(
             row,
             text=text,
-            command=lambda: self._on_node_click(node_id),
+            command=lambda nid=node_id: self._on_node_click(nid),
             anchor='w',
             height=30,
             corner_radius=6,
@@ -118,19 +153,28 @@ class TreeWidget(DarkScrollableFrame):
             hover_color=self._hover_color(),
         )
         btn.pack(fill='x', expand=True)
-        row.pack(fill='x', pady=1)
         self.nodes[node_id] = {'row': row, 'btn': btn, 'toggle': None,
-                               'level': 0, 'expanded': True, 'has_children': False,
+                               'level': 0, 'has_children': False,
                                'box_id': node_id}
+        # Специальные узлы всегда в начале, в порядке добавления.
+        self._order.insert(self._special_count, node_id)
+        self._special_count += 1
 
-    def add_box_node(self, box: Box, parent_id: Optional[int], level: int = 0,
-                     has_children: bool = False, expanded: bool = True):
-        """Добавить узел контейнера (плоский ряд с отступом по уровню)."""
+    def add_box_node(self, box: Box, parent_id: Optional[int] = None, level: int = 0,
+                     has_children: bool = False, expanded: Optional[bool] = None):
+        """Добавить узел контейнера (плоский ряд с отступом по уровню).
+
+        ``expanded=None`` — состояние берётся из сохранённого (между
+        пересборками дерева); новых узлов по умолчанию раскрыты.
+        """
         # В дереве показываем только название контейнера, без типа в скобках
         label = box.box_name
 
+        if expanded is None:
+            expanded = self._expanded_state.get(box.box_id, True)
+        self._expanded_state[box.box_id] = bool(expanded)
+
         row = ctk.CTkFrame(self, fg_color='transparent')
-        row.pack(fill='x', pady=1, padx=(level * self.INDENT, 0))
 
         toggle = ctk.CTkButton(
             row,
@@ -142,7 +186,7 @@ class TreeWidget(DarkScrollableFrame):
             fg_color='transparent',
             hover_color=self._hover_color(),
             text_color=self._muted_color(),
-            command=lambda bid=box.box_id: self._toggle_node(bid),
+            command=lambda bid=box.box_id: self.toggle_node(bid),
         )
         toggle.pack(side='left', padx=(0, 2))
 
@@ -161,9 +205,13 @@ class TreeWidget(DarkScrollableFrame):
         btn.pack(side='left', fill='x', expand=True)
 
         self.nodes[box.box_id] = {'row': row, 'btn': btn, 'toggle': toggle,
-                                  'level': level,
-                                  'expanded': expanded, 'has_children': has_children,
+                                  'level': level, 'has_children': has_children,
                                   'box_id': box.box_id}
+        self._order.append(box.box_id)
+
+    def forget_box(self, box_id: int):
+        """Вычеркнуть узел из состояния (используется после удаления)."""
+        self._expanded_state.pop(box_id, None)
 
     # ------------------------------------------------------- раскрытие узлов
     @staticmethod
@@ -172,38 +220,75 @@ class TreeWidget(DarkScrollableFrame):
             return '•'
         return '▼' if expanded else '▶'
 
+    def _is_visible(self, box_id) -> bool:
+        """Виден ли узел: все предки в цепочке должны быть развёрнуты."""
+        node = self.nodes.get(box_id)
+        while node is not None and node['level'] > 0:
+            parent_id = self._find_parent_id(node)
+            if parent_id is None:
+                break
+            parent = self.nodes.get(parent_id)
+            if parent is None:
+                break
+            if parent['has_children'] and not self._expanded_state.get(parent_id, True):
+                return False
+            node = parent
+        return True
+
+    def _find_parent_id(self, node) -> Optional[int]:
+        """Непосредственный родитель узла по списку обхода."""
+        try:
+            idx = self._order.index(node['box_id'])
+        except ValueError:
+            return None
+        for i in range(idx - 1, -1, -1):
+            candidate = self.nodes.get(self._order[i])
+            if candidate is not None and candidate['level'] == node['level'] - 1:
+                return self._order[i]
+            if candidate is not None and candidate['level'] < node['level'] - 1:
+                return None
+        return None
+
     def _apply_visibility(self):
-        """Скрыть/показать ряды в соответствии с состоянием раскрытия.
+        """Переупаковать ряды в порядке обхода, скрывая ветки свёрнутых узлов.
 
-        Узлы идут в порядке обхода дерева (родитель раньше потомков),
-        поэтому достаточно одного «горизонта»: всё, что находится глубже
-        свёрнутого узла, скрыто до его родителя.
+        Сначала ``pack_forget`` применяется ко всем рядам, затем видимые
+        переупаковываются строго по ``_order``. Иначе Tk добавляет только что
+        упакованный виджет в конец очереди pack — после разворачивания узла
+        его дочерние строки оказывались внизу списка вместо позиции сразу под
+        родителем.
         """
-        max_visible_level = 10 ** 9
-        # Специальные узлы (id None / -1) идут первыми, затем контейнеры по id —
-        # порядок обхода дерева: родитель раньше потомков.
-        def node_order(box_id):
-            return (0, 0) if not isinstance(box_id, int) else (1, box_id)
-        for box_id, node in sorted(self.nodes.items(), key=lambda kv: node_order(kv[0])):
-            if node['level'] > max_visible_level:
-                node['row'].pack_forget()
-                continue
-            node['row'].pack(fill='x', pady=1, padx=(node['level'] * self.INDENT, 0))
+        self._order = [bid for bid in self._order if bid in self.nodes]
+        # 1. Скрыть все ряды, чтобы pack ниже шёл всегда в чистую очередь.
+        for box_id in self._order:
+            self.nodes[box_id]['row'].pack_forget()
+        # 2. Показать только видимые — в правильном порядке обхода.
+        for box_id in self._order:
+            node = self.nodes[box_id]
+            if self._is_visible(box_id):
+                node['row'].pack(fill='x', pady=1,
+                                 padx=(node['level'] * self.INDENT, 0))
 
-            if node['has_children'] and not node['expanded']:
-                max_visible_level = node['level'] - 1
-            else:
-                max_visible_level = 10 ** 9
+    def _sync_scrollregion(self):
+        """Обновить область прокрутки после изменения набора видимых строк."""
+        self.update_idletasks()
+        self._after_content_change()
 
-    def _toggle_node(self, box_id: int):
+    def toggle_node(self, box_id: int):
+        """Развернуть/свернуть узел (публичный API для тестов и горячих клавиш)."""
         node = self.nodes.get(box_id)
         if not node or not node['has_children']:
             return
-        node['expanded'] = not node['expanded']
-        node['toggle'].configure(text=self._toggle_text(node['has_children'], node['expanded']))
+        expanded = not self._expanded_state.get(box_id, True)
+        self._expanded_state[box_id] = expanded
+        toggle = node['toggle']
+        if toggle is not None and toggle.winfo_exists():
+            toggle.configure(text=self._toggle_text(True, expanded))
         self._apply_visibility()
-        self.update_idletasks()
-        self._after_content_change()
+        self._sync_scrollregion()
+
+    # совместимость со старым названием
+    _toggle_node = toggle_node
 
     # ------------------------------------------------------------ выделение
     def _on_node_click(self, box_id):
@@ -226,6 +311,28 @@ class TreeWidget(DarkScrollableFrame):
     def select_node(self, box_id):
         """Программно выбрать узел."""
         self._on_node_click(box_id)
+
+    def reveal_node(self, box_id) -> None:
+        """Развернуть всех предков узла, чтобы он стал видимым."""
+        node = self.nodes.get(box_id)
+        if node is None:
+            return
+        changed = False
+        parent_id = self._find_parent_id(node)
+        while parent_id is not None:
+            parent = self.nodes.get(parent_id)
+            if parent is None:
+                break
+            if parent['has_children'] and not self._expanded_state.get(parent_id, True):
+                self._expanded_state[parent_id] = True
+                if parent['toggle'] is not None and parent['toggle'].winfo_exists():
+                    parent['toggle'].configure(text=self._toggle_text(True, True))
+                changed = True
+            node = parent
+            parent_id = self._find_parent_id(node)
+        if changed:
+            self._apply_visibility()
+            self._sync_scrollregion()
 
 
 def natural_key(text: str):
@@ -546,7 +653,10 @@ class MainWindow:
 
     def _refresh_tree(self):
         selected = self.selected_box_id
+        # Состояние раскрытия (self.tree._expanded_state) НЕ сбрасывается:
+        # свёрнутые ветки остаются свёрнутыми после обновления данных.
         self.tree.clear()
+        self.tree.begin_build()
 
         # Специальные узлы
         self.tree.add_special_node(None, 'Все товары')
@@ -556,25 +666,43 @@ class MainWindow:
         all_boxes = crud.get_all_boxes(self.client)
         children_map: dict = {}
         for b in all_boxes:
-            children_map.setdefault(b.parent_id, []).append(b)
+            parent = b.parent_id
+            # Страховка от «сирот»: удалённый/несуществующий родитель
+            # означает корневой уровень, иначе такой контейнер исчез бы из дерева.
+            if parent is not None and not any(x.box_id == parent for x in all_boxes):
+                parent = None
+            children_map.setdefault(parent, []).append(b)
         for lst in children_map.values():
             lst.sort(key=lambda b: natural_key(b.box_name))
 
+        # Порядок обхода = порядок добавления: родитель раньше потомков,
+        # дети — в естественном порядке названий («Ящик 2» перед «Ящик 10»).
+        visited: set = set()
+
         def walk(parent_id, level):
             for box in children_map.get(parent_id, []):
+                if box.box_id in visited:      # защита от циклов parent_id
+                    continue
+                visited.add(box.box_id)
                 has_children = bool(children_map.get(box.box_id))
                 self.tree.add_box_node(box, parent_id, level=level,
-                                       has_children=has_children, expanded=True)
+                                       has_children=has_children)
                 if has_children:
                     walk(box.box_id, level + 1)
 
         walk(None, 0)
 
-        self.tree._apply_visibility()
-        self.tree.update_idletasks()
-        self.tree._after_content_change()
+        # Узлы, не попавшие в обход (циклы в иерархии), показываем корнями,
+        # чтобы они не пропадали бесследно.
+        for b in sorted(all_boxes, key=lambda b: natural_key(b.box_name)):
+            if b.box_id not in visited:
+                has_children = bool(children_map.get(b.box_id))
+                self.tree.add_box_node(b, None, level=0, has_children=has_children)
+
+        self.tree.finish_build()
 
         if selected is not None and selected in self.tree.nodes:
+            self.tree.reveal_node(selected)
             self.tree.select_node(selected)
         else:
             self.tree.select_node(None)
