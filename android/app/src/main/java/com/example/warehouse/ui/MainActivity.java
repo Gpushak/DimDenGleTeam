@@ -58,6 +58,18 @@ public class MainActivity extends AppCompatActivity {
                         onScanned(itemId, boxId);
                     });
 
+    /** Экран редактирования/удаления товара: при возврате перечитываем контейнер. */
+    private final ActivityResultLauncher<Intent> itemManageLauncher =
+            registerForActivityResult(new ActivityResultContracts.StartActivityForResult(),
+                    result -> {
+                        if (result.getResultCode() == RESULT_OK
+                                && result.getData() != null
+                                && result.getData().getBooleanExtra(
+                                        ItemManageActivity.RESULT_CHANGED, false)) {
+                            refreshCurrentLevel();
+                        }
+                    });
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -78,9 +90,24 @@ public class MainActivity extends AppCompatActivity {
 
         binding.list.setOnItemClickListener((parent, view, position, id) -> {
             WarehouseAdapter.Row row = adapter.getItem(position);
-            if (row != null && row.isBox) {
-                openBox(row.box);
+            if (row == null) {
+                return;
             }
+            if (row.isBox) {
+                openBox(row.box);
+            } else {
+                openItemEditor(row.item.item_id);
+            }
+        });
+
+        // Долгое нажатие — быстрый доступ к удалению без входа в редактор.
+        binding.list.setOnItemLongClickListener((parent, view, position, id) -> {
+            WarehouseAdapter.Row row = adapter.getItem(position);
+            if (row != null && !row.isBox) {
+                confirmDeleteFromList(row.item);
+                return true;
+            }
+            return false;
         });
 
         loadTree();
@@ -116,6 +143,56 @@ public class MainActivity extends AppCompatActivity {
     private void openBox(BoxNode box) {
         path.addLast(box);
         loadContents(box);
+    }
+
+    /** Открывает экран редактирования позиции товара текущего контейнера. */
+    private void openItemEditor(int itemId) {
+        Intent intent = new Intent(this, ItemManageActivity.class);
+        intent.putExtra(ItemManageActivity.EXTRA_ITEM_ID, itemId);
+        BoxNode current = path.peekLast();
+        intent.putExtra(ItemManageActivity.EXTRA_BOX_ID, current != null ? current.id : 0);
+        itemManageLauncher.launch(intent);
+    }
+
+    /**
+     * Быстрое удаление позиции из списка (долгое нажатие) с подтверждением.
+     * Сервер отвечает 204/200 — в любом случае перечитываем контейнер.
+     */
+    private void confirmDeleteFromList(BoxContents.ItemRow item) {
+        new AlertDialog.Builder(this)
+                .setTitle("Удалить товар?")
+                .setMessage(item.item_type_name + " (" + item.quantity
+                        + " шт., позиция #" + item.item_id
+                        + ") будет удалена без возможности восстановления.")
+                .setPositiveButton("Удалить", (dialog, which) ->
+                        ApiClient.api().deleteItem(item.item_id).enqueue(new Callback<Void>() {
+                            @Override
+                            public void onResponse(Call<Void> call, Response<Void> response) {
+                                if (response.isSuccessful()) {
+                                    toast("Товар удалён");
+                                    refreshCurrentLevel();
+                                } else {
+                                    toast("Ошибка удаления: " + response.code());
+                                }
+                            }
+
+                            @Override
+                            public void onFailure(Call<Void> call, Throwable t) {
+                                toast("Сеть недоступна: " + t.getMessage());
+                            }
+                        }))
+                .setNegativeButton("Отмена", null)
+                .show();
+    }
+
+    /** Перечитывает текущий уровень: содержимое контейнера или дерево (для корня). */
+    private void refreshCurrentLevel() {
+        BoxNode current = path.peekLast();
+        if (current != null) {
+            loadContents(current);
+        } else {
+            loadTree();
+        }
     }
 
     /**

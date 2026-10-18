@@ -98,6 +98,8 @@ public class WarehouseAdapter extends BaseAdapter {
             if (row.item.total_weight_g != null) {
                 sb.append(" · ").append(formatWeight(row.item.total_weight_g));
             }
+            // Подсказка о доступных действиях: тап — редактировать, долго — удалить.
+            sb.append(" · тап — изменить, долгое нажатие — удалить");
             subtitle.setText(sb);
             icon.setImageDrawable(
                     ContextCompat.getDrawable(context, R.drawable.ic_item));

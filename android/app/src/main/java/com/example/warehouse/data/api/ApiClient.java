@@ -7,6 +7,8 @@ import okhttp3.logging.HttpLoggingInterceptor;
 import retrofit2.Retrofit;
 import retrofit2.converter.gson.GsonConverterFactory;
 
+import com.google.gson.Gson;
+
 /**
  * Единая точка доступа к REST API сервера.
  * Базовый адрес берётся из {@link ServerConfig} и может быть изменён
@@ -58,10 +60,14 @@ public class ApiClient {
                 .readTimeout(15, TimeUnit.SECONDS)
                 .build();
 
+        // serializeNulls нужен для PATCH /items/{id}: null в box_id означает
+        // «вынуть позицию из контейнера», и это поле должно попасть в JSON.
+        Gson gson = new Gson().newBuilder().serializeNulls().create();
+
         return new Retrofit.Builder()
                 .baseUrl(baseUrl)
                 .client(client)
-                .addConverterFactory(GsonConverterFactory.create())
+                .addConverterFactory(GsonConverterFactory.create(gson))
                 .build();
     }
 }

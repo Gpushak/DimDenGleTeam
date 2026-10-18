@@ -25,6 +25,11 @@
             tools:ignore="LockedOrientationActivity" />
 
         <activity
+            android:name=".ui.ItemManageActivity"
+            android:exported="false"
+            android:label="Товар" />
+
+        <activity
             android:name=".ui.MainActivity"
             android:exported="true">
             <intent-filter>
