@@ -99,20 +99,40 @@ class DarkTableFrame(ctk.CTkFrame):
         self._vbar._auto_place = (self._vbar.pack, (), {'side': 'right', 'fill': 'y'})
         self._hbar._auto_place = (self._hbar.pack, (), {'side': 'bottom', 'fill': 'x'})
 
-        # Полоса разделителей колонок над таблицей создаётся здесь, до
-        # раскладки: порядок pack важен — сначала полосы скроллов по краям
-        # и линейка сверху, затем Treeview. Иначе при появлении скроллбаров
-        # полоса смещается относительно таблицы и метки колонок «съезжают».
+        # Полоса разделителей колонок поверх шапки таблицы создаётся здесь,
+        # до раскладки: порядок pack важен — сначала полосы скроллов по
+        # краям, затем Treeview. Иначе при появлении скроллбаров полоса
+        # смещается относительно таблицы и метки колонок «съезжают».
         self._sep_height = 6
         self._sep_canvas = tk.Canvas(
             self, height=self._sep_height, highlightthickness=0, bd=0,
-            bg=pal.panel_bg, cursor='tcross', takefocus=0,
+            bg=pal.header_bg, takefocus=0,
         )
+
+        # Клик по полосе разделителей (она лежит поверх шапки Treeview и
+        # перехватывает события заголовков) прокидывается в дерево: сортировка
+        # по клику на колонку работает через heading(command=...).
+        def _forward(event):
+            col = self.tree.identify_column(event.x - self.tree.winfo_x())
+            if col and col != '#0':
+                try:
+                    index = int(col[1:]) - 1
+                    cmd = self.tree.heading(self.tree['columns'][index], 'command')
+                    if cmd:
+                        self.tree.tk.eval(cmd)
+                except (ValueError, IndexError, tk.TclError):
+                    pass
+            return 'break'
+
+        self._sep_canvas.bind('<Button-1>', _forward)
+        self._sep_canvas.bind('<Double-1>', _forward)
 
         self._vbar.pack(side='right', fill='y')
         self._hbar.pack(side='bottom', fill='x')
-        self._sep_canvas.pack(side='top', fill='x')
         self.tree.pack(side='left', fill='both', expand=True)
+        # Поверх шапки Treeview (place не участвует в раскладке pack и не
+        # сдвигает строки таблицы).
+        self._place_separators_strip()
 
         for col in (columns or ()):
             width = (column_widths or {}).get(col, 120)
@@ -139,12 +159,42 @@ class DarkTableFrame(ctk.CTkFrame):
     def _on_theme_change(self):
         pal = theme.palette()
         self.configure(fg_color=pal.panel_bg)
-        self._sep_canvas.configure(bg=pal.panel_bg)
+        self._sep_canvas.configure(bg=pal.header_bg)
         self.tree.tag_configure('oddrow', background=pal.row_alt)
         self.tree.tag_configure('evenrow', background=pal.panel_bg)
         self.refresh_column_separators()
 
     # ------------------------------------------------------------- separators
+    def _place_separators_strip(self):
+        """Разместить полосу разделителей поверх шапки Treeview.
+
+        Полоса перекрывает только верхние пиксели заголовков колонок, не
+        участвуя в раскладке pack — строки таблицы не смещаются вниз, а
+        сама полоса всегда точно выровнена по колонкам (в отличие от
+        отдельной строки над таблицей, которая «выезжала» из-за разницы
+        краёв с областью прокрутки).
+        """
+        tree = self.tree
+        # Левый край полосы совпадает с левым краём области строк дерева:
+        # при горизонтальной прокрутке ttk рисует колонки со сдвигом ровно
+        # на эту величину, поэтому разделители остаются под границами
+        # заголовков без дополнительных поправок.
+        try:
+            bbox = tree.bbox('#0')
+        except tk.TclError:
+            bbox = None  # корневой элемент не виден (например, show='headings')
+        left = tree.winfo_x() + (bbox[0] if bbox else 0)
+        width = max(1, tree.winfo_width() - (left - tree.winfo_x()))
+        self._sep_canvas.place(x=left, y=tree.winfo_y(), width=width,
+                               height=self._sep_height, anchor='nw')
+        # place() и так поднимает окно над pack-братьями, но перестрахуемся:
+        # для tk.Canvas tkraise — это метод канваса, а не окна, поэтому
+        # поднимаем окно напрямую через Tk-команду raise.
+        try:
+            self._sep_canvas.tk.call(self._sep_canvas._w, 'raise')  # noqa: SLF001
+        except tk.TclError:
+            pass
+
     def refresh_column_separators(self):
         """Перерисовать вертикальные разделители между колонками Treeview."""
         if self._sep_pending is not None:
@@ -152,10 +202,16 @@ class DarkTableFrame(ctk.CTkFrame):
                 self.after_cancel(self._sep_pending)
             except Exception:
                 pass
-        self._sep_pending = self.after_idle(self._draw_column_separators)
+        self._sep_pending = self.after_idle(self._redraw_separators)
+
+    def _redraw_separators(self):
+        self._sep_pending = None
+        if not self._sep_canvas.winfo_exists() or not self.tree.winfo_exists():
+            return
+        self._place_separators_strip()
+        self._draw_column_separators()
 
     def _draw_column_separators(self):
-        self._sep_pending = None
         canvas = self._sep_canvas
         tree = self.tree
         canvas.delete('all')
@@ -177,9 +233,8 @@ class DarkTableFrame(ctk.CTkFrame):
             if bbox:
                 offset = max(0, -bbox[0])
 
-        # Границы колонок (метки на полосе над таблицей). Полоса лежит
-        # над Treeview, поэтому её левый край смещён относительно таблицы —
-        # перевод координат через winfo_rootx.
+        # Полоса лежит поверх шапки Treeview; её левый край совпадает с
+        # областью строк — перевод координат через winfo_rootx.
         dx = tree.winfo_rootx() - canvas.winfo_rootx()
 
         x = dx - offset
