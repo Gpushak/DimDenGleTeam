@@ -8,6 +8,15 @@ from typing import Optional
 from api_client import ApiClient
 import crud
 from models import Box, ItemType, Item
+from ui import theme
+
+
+def _center_dialog(dialog: ctk.CTkToplevel, parent, width: int, height: int):
+    """Разместить диалог по центру родительского окна."""
+    dialog.update_idletasks()
+    x = parent.winfo_rootx() + (parent.winfo_width() - width) // 2
+    y = parent.winfo_rooty() + (parent.winfo_height() - height) // 2
+    dialog.geometry(f'{width}x{height}+{max(x, 0)}+{max(y, 0)}')
 
 
 class BoxDialog:
@@ -20,16 +29,19 @@ class BoxDialog:
 
         self.dialog = ctk.CTkToplevel(parent)
         self.dialog.title('Новый контейнер' if mode == 'add' else 'Редактировать контейнер')
-        self.dialog.geometry('400x250')
         self.dialog.transient(parent)
+        self.dialog.resizable(False, False)
+        _center_dialog(self.dialog, parent, 460, 260)
         self.dialog.grab_set()
 
         self._create_widgets(parent_id)
         self.dialog.wait_window()
 
     def _create_widgets(self, default_parent_id: Optional[int]):
-        frame = ctk.CTkFrame(self.dialog)
-        frame.pack(fill='both', expand=True, padx=10, pady=10)
+        pal = theme.palette()
+        self.dialog.configure(fg_color=pal.window_bg)
+        frame = ctk.CTkFrame(self.dialog, fg_color='transparent', border_width=0)
+        frame.pack(fill='both', expand=True, padx=16, pady=14)
 
         # Контейнеры грузим один раз: из них считаются и пути, и исключения.
         boxes = crud.BoxIndex.load(self.client)
@@ -37,7 +49,7 @@ class BoxDialog:
         # Родитель
         ctk.CTkLabel(frame, text='Родительский контейнер:').grid(row=0, column=0, sticky='w', pady=5)
         self.parent_var = ctk.StringVar()
-        parent_combo = ctk.CTkComboBox(frame, variable=self.parent_var, state='readonly', width=250)
+        parent_combo = ctk.CTkComboBox(frame, variable=self.parent_var, state='readonly', width=250, border_width=0)
         parent_combo.grid(row=0, column=1, pady=5)
 
         ROOT_LABEL = '— Корень —'
@@ -70,14 +82,14 @@ class BoxDialog:
         self.name_var = ctk.StringVar()
         if self.mode == 'edit' and self.box:
             self.name_var.set(self.box.box_name)
-        name_entry = ctk.CTkEntry(frame, textvariable=self.name_var, width=250)
+        name_entry = ctk.CTkEntry(frame, textvariable=self.name_var, width=250, border_width=0)
         name_entry.grid(row=1, column=1, pady=5)
         name_entry.focus()
 
         # Тип
         ctk.CTkLabel(frame, text='Тип контейнера:').grid(row=2, column=0, sticky='w', pady=5)
         self.type_var = ctk.StringVar()
-        type_combo = ctk.CTkComboBox(frame, variable=self.type_var, state='readonly', width=250)
+        type_combo = ctk.CTkComboBox(frame, variable=self.type_var, state='readonly', width=250, border_width=0)
         type_combo.grid(row=2, column=1, pady=5)
 
         box_types = crud.get_all_box_types(self.client)
@@ -158,8 +170,9 @@ class ItemTypeDialog:
 
         self.dialog = ctk.CTkToplevel(parent)
         self.dialog.title('Новый тип товара' if mode == 'add' else 'Редактировать тип товара')
-        self.dialog.geometry('400x200')
         self.dialog.transient(parent)
+        self.dialog.resizable(False, False)
+        _center_dialog(self.dialog, parent, 460, 210)
         self.dialog.grab_set()
         # Страховка: закрытие крестиком тоже должно остановить таймер.
         self.dialog.bind('<Destroy>', lambda _event: setattr(self, '_closed', True))
@@ -168,15 +181,17 @@ class ItemTypeDialog:
         self.dialog.wait_window()
 
     def _create_widgets(self):
-        frame = ctk.CTkFrame(self.dialog)
-        frame.pack(fill='both', expand=True, padx=10, pady=10)
+        pal = theme.palette()
+        self.dialog.configure(fg_color=pal.window_bg)
+        frame = ctk.CTkFrame(self.dialog, fg_color='transparent', border_width=0)
+        frame.pack(fill='both', expand=True, padx=16, pady=14)
 
         # Название
         ctk.CTkLabel(frame, text='Название типа:').grid(row=0, column=0, sticky='w', pady=5)
         self.name_var = ctk.StringVar()
         if self.mode == 'edit' and self.item_type:
             self.name_var.set(self.item_type.item_type_name)
-        name_entry = ctk.CTkEntry(frame, textvariable=self.name_var, width=250)
+        name_entry = ctk.CTkEntry(frame, textvariable=self.name_var, width=250, border_width=0)
         name_entry.grid(row=0, column=1, pady=5)
         name_entry.focus()
 
@@ -189,7 +204,7 @@ class ItemTypeDialog:
             self._set_weight_field(self.item_type.weight_g)
         weight_cell = ctk.CTkFrame(frame, fg_color='transparent')
         weight_cell.grid(row=1, column=1, pady=5, sticky='w')
-        weight_entry = ctk.CTkEntry(weight_cell, textvariable=self.weight_var, width=160)
+        weight_entry = ctk.CTkEntry(weight_cell, textvariable=self.weight_var, width=160, border_width=0)
         weight_entry.pack(side='left')
         ctk.CTkButton(weight_cell, text='С весов', width=80,
                       command=self._on_fetch_weight).pack(side='left', padx=(5, 0))
@@ -305,21 +320,24 @@ class ItemDialog:
 
         self.dialog = ctk.CTkToplevel(parent)
         self.dialog.title('Новый товар' if mode == 'add' else 'Редактировать товар')
-        self.dialog.geometry('450x220')
         self.dialog.transient(parent)
+        self.dialog.resizable(False, False)
+        _center_dialog(self.dialog, parent, 500, 240)
         self.dialog.grab_set()
 
         self._create_widgets(default_box_id)
         self.dialog.wait_window()
 
     def _create_widgets(self, default_box_id: Optional[int]):
-        frame = ctk.CTkFrame(self.dialog)
-        frame.pack(fill='both', expand=True, padx=10, pady=10)
+        pal = theme.palette()
+        self.dialog.configure(fg_color=pal.window_bg)
+        frame = ctk.CTkFrame(self.dialog, fg_color='transparent', border_width=0)
+        frame.pack(fill='both', expand=True, padx=16, pady=14)
 
         # Тип товара
         ctk.CTkLabel(frame, text='Тип товара:').grid(row=0, column=0, sticky='w', pady=5)
         self.type_var = ctk.StringVar()
-        type_combo = ctk.CTkComboBox(frame, variable=self.type_var, state='readonly', width=280)
+        type_combo = ctk.CTkComboBox(frame, variable=self.type_var, state='readonly', width=280, border_width=0)
         type_combo.grid(row=0, column=1, pady=5)
 
         def label_for(item_type: ItemType) -> str:
@@ -339,7 +357,7 @@ class ItemDialog:
         # Контейнер
         ctk.CTkLabel(frame, text='Расположение:').grid(row=1, column=0, sticky='w', pady=5)
         self.box_var = ctk.StringVar()
-        box_combo = ctk.CTkComboBox(frame, variable=self.box_var, state='readonly', width=280)
+        box_combo = ctk.CTkComboBox(frame, variable=self.box_var, state='readonly', width=280, border_width=0)
         box_combo.grid(row=1, column=1, pady=5)
 
         NO_BOX_LABEL = 'Без расположения'
@@ -369,7 +387,7 @@ class ItemDialog:
             self.qty_var.set(str(self.item.quantity))
         else:
             self.qty_var.set('1')
-        qty_entry = ctk.CTkEntry(frame, textvariable=self.qty_var, width=280)
+        qty_entry = ctk.CTkEntry(frame, textvariable=self.qty_var, width=280, border_width=0)
         qty_entry.grid(row=2, column=1, pady=5)
 
         # Кнопки

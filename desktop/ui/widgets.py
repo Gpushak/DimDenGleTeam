@@ -1,103 +1,47 @@
-"""Вспомогательные виджеты для тёмной темы customtkinter.
+"""Вспомогательные виджеты, согласованные с темой приложения.
 
 Содержит:
-* ``apply_dark_theme`` — настройка ttk-виджетов (Treeview, Scrollbar) под тёмную тему;
-* ``AutoScrollbar``   — ttk.Scrollbar, который исчезает, когда содержимое помещается целиком;
-* ``DarkScrollableFrame`` — CTkScrollableFrame с автоскрывающимся скроллбаром и тёмным фоном.
+* ``AutoScrollbar``       — ttk.Scrollbar, исчезающий, когда содержимое помещается целиком;
+* ``DarkTableFrame``      — панель со Treeview без лишних рамок и с автоскроллбарами;
+* ``DarkScrollableFrame`` — CTkScrollableFrame с тонким ползунком прокрутки.
+
+Названия классов сохранены для совместимости с существующим кодом UI,
+но цвета берутся из текущей темы (``ui.theme``), а не зашиты как тёмные.
 """
 import tkinter as tk
 import tkinter.ttk as ttk
 
 import customtkinter as ctk
 
-
-# Палитра тёмной темы приложения (согласована с темой customtkinter 'dark').
-# Константы используются внутри модуля; наружу отдаются те, что нужны UI.
-DARK_PANEL = '#252525'       # фон панелей и области таблиц
-DARK_HEADER = '#3a3d40'      # фон шапки таблицы
-DARK_TEXT = '#e6e6e6'        # основной текст
-DARK_BORDER = '#4a4d50'      # границы и разделители колонок
-DARK_SELECTED = '#1f538d'    # выделение строки
-
-# Цвета скроллбаров и строк таблицы — используются только здесь.
-_SCROLLBAR = '#5c5c5c'
-_ROW_ODD = '#2f2f2f'
+from ui import theme
 
 
+# ------------------------------------------------------------------ совместимость
 def apply_dark_theme() -> None:
-    """Настроить стили ttk так, чтобы таблицы соответствовали тёмной теме."""
-    style = ttk.Style()
-    try:
-        style.theme_use('clam')
-    except tk.TclError:
-        pass
+    """Устаревший алиас: настраивает ttk-стили под текущую тему."""
+    theme.apply_ttk_theme()
 
-    style.configure(
-        'Dark.Treeview',
-        background=DARK_PANEL,
-        fieldbackground=DARK_PANEL,
-        foreground=DARK_TEXT,
-        rowheight=28,
-        bordercolor=DARK_BORDER,
-        lightcolor=DARK_PANEL,
-        darkcolor=DARK_PANEL,
-        relief='flat',
-    )
-    style.configure(
-        'Dark.Treeview.Heading',
-        background=DARK_HEADER,
-        foreground=DARK_TEXT,
-        font=('TkDefaultFont', 10, 'bold'),
-        bordercolor=DARK_BORDER,
-        lightcolor=DARK_HEADER,
-        darkcolor=DARK_HEADER,
-        relief='raised',
-        padding=(8, 6),
-    )
-    style.map(
-        'Dark.Treeview',
-        background=[('selected', DARK_SELECTED)],
-        foreground=[('selected', '#ffffff')],
-    )
-    style.map(
-        'Dark.Treeview.Heading',
-        background=[('active', '#46494d')],
-        foreground=[('active', '#ffffff')],
-    )
 
-    style.configure(
-        'Dark.Vertical.TScrollbar',
-        background=_SCROLLBAR,
-        troughcolor=DARK_PANEL,
-        bordercolor=DARK_BORDER,
-        arrowcolor=DARK_TEXT,
-        lightcolor=_SCROLLBAR,
-        darkcolor=_SCROLLBAR,
-    )
-    style.configure(
-        'Dark.Horizontal.TScrollbar',
-        background=_SCROLLBAR,
-        troughcolor=DARK_PANEL,
-        bordercolor=DARK_BORDER,
-        arrowcolor=DARK_TEXT,
-        lightcolor=_SCROLLBAR,
-        darkcolor=_SCROLLBAR,
-    )
+#: Палитра по умолчанию (используется только если тема ещё не выбрана).
+DARK_PANEL = theme.DARK.panel_bg
+DARK_HEADER = theme.DARK.header_bg
+DARK_TEXT = theme.DARK.text
+DARK_BORDER = theme.DARK.border
+DARK_SELECTED = theme.DARK.selected
 
 
 class AutoScrollbar(ttk.Scrollbar):
     """Скроллбар, который не показывается, если всё содержимое влезает.
 
     Стандартный ttk.Scrollbar всегда занимает место даже при полном
-    видимом содержимом. Этот класс подавляет показ ``set``/``pack``/``grid``,
-    когда область прокрутки равна окну просмотра (first == 0, last == 1).
+    видимом содержимом. Этот класс подавляет показ ``set``, когда область
+    прокрутки равна окну просмотра (first == 0, last == 1).
     """
 
     def set(self, lo, hi):
         if float(lo) <= 0.0 and float(hi) >= 1.0:
             # содержимое помещается целиком — прячем скроллбар
             self.forget()
-            # блокируем отрисовку ползунка
             super().set(0.0, 1.0)
             return
         if not self.winfo_manager():
@@ -114,32 +58,42 @@ class AutoScrollbar(ttk.Scrollbar):
 
 
 class DarkTableFrame(ctk.CTkFrame):
-    """Тёмная панель со Treeview и скроллбарами, исчезающими без необходимости.
+    """Панель со Treeview и скроллбарами, исчезающими без необходимости.
 
-    * фон панели соответствует тёмной теме приложения;
+    * фон панели берётся из текущей темы;
+    * рамок нет: панель отличима фоном, разграничителями служат только
+      шапка таблицы и тонкие разделители колонок;
     * вертикальный скроллбар появляется только если строк больше, чем видно;
-    * горизонтальный скроллбар — только если колонки не влезают по ширине;
-    * ``xview_var`` меняется при прокрутке (для перерисовки разделителей колонок).
+    * горизонтальный — только если колонки не влезают по ширине;
+    * при смене темы (событие ``<<ThemeChanged>>``) перекрашивается сам.
     """
 
     def __init__(self, master, columns=None, headings=None, column_widths=None,
                  **kwargs):
-        super().__init__(master, fg_color=DARK_PANEL, border_width=1,
-                         border_color=DARK_BORDER, corner_radius=8, **kwargs)
+        kwargs.setdefault('fg_color', 'transparent')
+        kwargs.setdefault('corner_radius', 8)
+        super().__init__(master, **kwargs)
+
+        pal = theme.palette()
+        self.configure(fg_color=pal.panel_bg)
 
         self.tree = ttk.Treeview(
             self,
             columns=tuple(columns or ()),
             show='headings',
-            style='Dark.Treeview',
+            style='App.Treeview',
             selectmode='browse',
         )
 
         # переменная позиции горизонтальной прокрутки (отслеживается снаружи)
         self.xview_var = tk.StringVar()
 
-        self._vbar = AutoScrollbar(self, orient='vertical', command=self.tree.yview)
-        self._hbar = AutoScrollbar(self, orient='horizontal', command=self._xview_command)
+        self._vbar = AutoScrollbar(self, orient='vertical',
+                                   style='App.Vertical.TScrollbar',
+                                   command=self.tree.yview)
+        self._hbar = AutoScrollbar(self, orient='horizontal',
+                                   style='App.Horizontal.TScrollbar',
+                                   command=self._xview_command)
         self.tree.configure(yscrollcommand=self._vbar.set, xscrollcommand=self._xset)
 
         self._vbar._auto_place = (self._vbar.pack, (), {'side': 'right', 'fill': 'y'})
@@ -152,7 +106,7 @@ class DarkTableFrame(ctk.CTkFrame):
         self._sep_height = 6
         self._sep_canvas = tk.Canvas(
             self, height=self._sep_height, highlightthickness=0, bd=0,
-            bg=DARK_PANEL, cursor='tcross', takefocus=0,
+            bg=pal.panel_bg, cursor='tcross', takefocus=0,
         )
 
         self._vbar.pack(side='right', fill='y')
@@ -167,17 +121,30 @@ class DarkTableFrame(ctk.CTkFrame):
             self.tree.column(col, width=width, minwidth=60, anchor='w', stretch=True)
 
         # Чередование строк для читаемости
-        self.tree.tag_configure('oddrow', background=_ROW_ODD)
-        self.tree.tag_configure('evenrow', background=DARK_PANEL)
+        self.tree.tag_configure('oddrow', background=pal.row_alt)
+        self.tree.tag_configure('evenrow', background=pal.panel_bg)
         self._row_count = 0
 
-        # Полоса разделителей (_sep_canvas) создана выше, до раскладки.
         self._sep_canvas.bind('<Configure>',
                               lambda e: self.refresh_column_separators())
         self._sep_pending = None
         self.tree.bind('<Configure>',
                        lambda e: self.refresh_column_separators(), add='+')
 
+        # Перекраска при переключении темы.
+        toplevel = self.winfo_toplevel()
+        toplevel.bind('<<ThemeChanged>>', lambda _e=None: self._on_theme_change(), add='+')
+
+    # ------------------------------------------------------------------ theme
+    def _on_theme_change(self):
+        pal = theme.palette()
+        self.configure(fg_color=pal.panel_bg)
+        self._sep_canvas.configure(bg=pal.panel_bg)
+        self.tree.tag_configure('oddrow', background=pal.row_alt)
+        self.tree.tag_configure('evenrow', background=pal.panel_bg)
+        self.refresh_column_separators()
+
+    # ------------------------------------------------------------- separators
     def refresh_column_separators(self):
         """Перерисовать вертикальные разделители между колонками Treeview."""
         if self._sep_pending is not None:
@@ -201,23 +168,26 @@ class DarkTableFrame(ctk.CTkFrame):
         if len(cols) < 2:
             return
 
-        # смещение горизонтальной прокрутки в пикселях
-        first, last = tree.xview()
-        total_w = sum(tree.column(c, 'width') for c in cols)
-        offset = int(first * total_w)
+        # Смещение горизонтальной прокрутки: bbox первой колонки при
+        # прокрутке уходит влево за левый край (координата x отрицательна).
+        offset = 0
+        children = tree.get_children()
+        if children:
+            bbox = tree.bbox(children[0], cols[0])
+            if bbox:
+                offset = max(0, -bbox[0])
 
         # Границы колонок (метки на полосе над таблицей). Полоса лежит
         # над Treeview, поэтому её левый край смещён относительно таблицы —
-        # координаты пересчитываются через winfo_pointerxy-независимый
-        # перевод: x_полосы = x_таблицы + (tree.rootx - canvas.rootx).
+        # перевод координат через winfo_rootx.
         dx = tree.winfo_rootx() - canvas.winfo_rootx()
-        h = canvas.winfo_height()
 
-        x = -offset + dx
+        x = dx - offset
+        border = theme.palette().border
         for c in cols[:-1]:
             x += tree.column(c, 'width')
             if 0 < x < w:
-                canvas.create_line(x, 0, x, h, fill=DARK_BORDER)
+                canvas.create_line(x, 0, x, h, fill=border)
 
     def _xview_command(self, *args):
         self.tree.xview(*args)
@@ -239,19 +209,20 @@ class DarkTableFrame(ctk.CTkFrame):
 
 
 class DarkScrollableFrame(ctk.CTkScrollableFrame):
-    """CTkScrollableFrame с тёмным фоном и скроллбаром, скрытым когда он не нужен.
+    """CTkScrollableFrame с ползунком прокрутки, скрытым когда он не нужен.
 
     Встроенный CTkScrollbar всегда занимает место справа; здесь он заменяется
     на собственный canvas-скроллбар, который рисуется только при реальной
-    необходимости (содержимое выше области просмотра).
+    необходимости (содержимое выше области просмотра). Цвета обновляются
+    при смене темы.
     """
 
     BAR_WIDTH = 12
-    BAR_COLOR = ('#b0b0b0', '#5c5c5c')
     BAR_TROUGH = 'transparent'
 
     def __init__(self, master, **kwargs):
-        kwargs.setdefault('fg_color', DARK_PANEL)
+        kwargs.setdefault('fg_color', 'transparent')
+        kwargs.setdefault('label_text', '')
         super().__init__(master, **kwargs)
 
         # Родительский CTkFrame перерисовывает свой canvas при любом
@@ -280,6 +251,12 @@ class DarkScrollableFrame(ctk.CTkScrollableFrame):
         self._thumb_end = 1.0
         self._drag_offset = 0.0
         self._redraw_job = None
+
+        toplevel = self.winfo_toplevel()
+        toplevel.bind('<<ThemeChanged>>', lambda _e=None: self._schedule_redraw(), add='+')
+
+    def _bar_color(self) -> str:
+        return theme.palette().scrollbar
 
     def _canvas_bg(self) -> str:
         fg = self._parent_frame.cget('fg_color')
@@ -339,13 +316,11 @@ class DarkScrollableFrame(ctk.CTkScrollableFrame):
         pad = 2
         try:
             self._auto_bar.create_rectangle(pad, top, w - pad, bottom, radius=4,
-                                            fill=self._apply_appearance_mode(self.BAR_COLOR),
-                                            outline='')
+                                            fill=self._bar_color(), outline='')
         except tk.TclError:
             # Tk < 8.7 не поддерживает сглаженные углы у прямоугольников
             self._auto_bar.create_rectangle(pad, top, w - pad, bottom,
-                                            fill=self._apply_appearance_mode(self.BAR_COLOR),
-                                            outline='')
+                                            fill=self._bar_color(), outline='')
 
     # -- взаимодействие -------------------------------------------------------
     def _value_from_y(self, y):
