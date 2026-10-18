@@ -3,10 +3,10 @@ package com.example.warehouse.ui;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.os.Bundle;
-import android.text.InputType;
 import android.view.View;
-import android.widget.EditText;
 import android.widget.Toast;
+
+import com.google.android.material.textfield.TextInputEditText;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
@@ -14,6 +14,7 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.example.warehouse.BuildConfig;
+import com.example.warehouse.R;
 import com.example.warehouse.adapter.WarehouseAdapter;
 import com.example.warehouse.data.api.ApiClient;
 import com.example.warehouse.data.api.ServerConfig;
@@ -198,36 +199,45 @@ public class MainActivity extends AppCompatActivity {
     /**
      * Реакция на результат QR-сканирования.
      *
-     * Если распознан контейнер — переходим в него и подсвечиваем отсканированную
-     * позицию в списке. Для типа товара навигации нет: просто сообщаем, что
-     * код относится к справочной записи.
+     * Отсканирован товар — открываем меню редактирования этой позиции
+     * (контейнер с позицией сначала открывается, чтобы кнопка «Назад» из
+     * редактора вернула к месту хранения товара). Если распознан только
+     * контейнер — переходим в него. Для типа товара навигации нет: просто
+     * сообщаем, что код относится к справочной записи.
      *
      * @param itemId идентификатор позиции товара (0 — если не товар)
      * @param boxId  идентификатор контейнера (0 — если неизвестен)
      */
     private void onScanned(int itemId, int boxId) {
-        if (boxId > 0) {
-            BoxNode target = findNode(treeRoots, boxId);
+        if (itemId > 0) {
+            BoxNode target = boxId > 0 ? findNode(treeRoots, boxId) : null;
             if (target != null) {
-                // Пересобираем путь от корня до найденного контейнера,
+                // Пересобираем путь от корня до контейнера с товаром,
                 // чтобы кнопка «Вверх» вела по иерархии, а не в пустоту.
                 path.clear();
                 collectPath(treeRoots, boxId, path);
                 loadContents(target);
-                if (itemId > 0) {
-                    highlightItem(itemId);
-                }
+            } else if (boxId > 0) {
+                toast("Контейнер не найден в загруженном дереве — обновите");
+                return;
+            }
+            openItemEditor(itemId);
+            return;
+        }
+
+        if (boxId > 0) {
+            BoxNode target = findNode(treeRoots, boxId);
+            if (target != null) {
+                path.clear();
+                collectPath(treeRoots, boxId, path);
+                loadContents(target);
                 return;
             }
             toast("Контейнер не найден в загруженном дереве — обновите");
             return;
         }
 
-        if (itemId > 0) {
-            toast("Позиция товара найдена (ID " + itemId + ")");
-        } else {
-            toast("Отсканирован тип товара — см. сведения в сканере");
-        }
+        toast("Отсканирован тип товара — см. сведения в сканере");
     }
 
     /** Ищет контейнер по id в дереве, загруженном из /boxes/tree. */
@@ -263,17 +273,6 @@ public class MainActivity extends AppCompatActivity {
             }
         }
         return false;
-    }
-
-    /**
-     * Сообщает пользователю позицию товара в открытом контейнере.
-     *
-     * Список в адаптере плоский, а {@code item_id} в {@link WarehouseAdapter.Row}
-     * не хранится, поэтому программно выделить строку нельзя. Вместо этого
-     * показываем понятное уведомление с номером позиции.
-     */
-    private void highlightItem(int itemId) {
-        toast("Позиция #" + itemId + " — в открытом контейнере");
     }
 
     private void goUp() {
@@ -370,20 +369,26 @@ public class MainActivity extends AppCompatActivity {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
     }
 
-    /** Диалог настройки адреса сервера (для реального телефона — IP компьютера в LAN). */
+    /**
+     * Диалог настройки адреса сервера (для реального телефона — IP компьютера
+     * в LAN). Компактный вид: только поле ввода и кнопки, без лишних подсказок.
+     */
     private void showServerDialog() {
-        EditText input = new EditText(this);
-        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
-        input.setText(ServerConfig.getBaseUrl(this));
-        input.setSelection(input.getText().length());
+        View content = getLayoutInflater().inflate(
+                R.layout.dialog_server_config, null);
+        TextInputEditText etBaseUrl = content.findViewById(R.id.etBaseUrl);
+
+        String saved = ServerConfig.getBaseUrl(this);
+        // В поле показываем адрес без схемы и завершающего «/» — normalize
+        // при сохранении вернёт их обратно.
+        etBaseUrl.setText(saved.replaceFirst("^https?://", "").replaceAll("/$", ""));
+        etBaseUrl.setSelection(etBaseUrl.getText().length());
 
         new AlertDialog.Builder(this)
-                .setTitle("Адрес сервера")
-                .setMessage("Например: http://192.168.1.50:8000\n"
-                        + "Для эмулятора Android хост-машина доступна по 10.0.2.2")
-                .setView(input)
+                .setTitle("Сервер")
+                .setView(content)
                 .setPositiveButton("Сохранить", (DialogInterface dialog, int which) -> {
-                    String url = ServerConfig.normalize(input.getText().toString());
+                    String url = ServerConfig.normalize(etBaseUrl.getText().toString());
                     if (url.isEmpty()) {
                         toast("Адрес не может быть пустым");
                         return;

@@ -241,6 +241,18 @@ public class ScanActivity extends AppCompatActivity {
     private void showResult(QrCode code, LookupResult result) {
         setStatus("Найдено: " + describe(result));
 
+        // Товар: сразу закрываем сканер с результатом — вызывающий экран
+        // (MainActivity) откроет меню редактирования этой позиции.
+        if ("item".equals(result.kind) && result.item != null) {
+            Intent data = new Intent()
+                    .putExtra(RESULT_ITEM_ID, result.item.id)
+                    .putExtra(RESULT_BOX_ID,
+                            result.item.box_id != null ? result.item.box_id : 0);
+            setResult(RESULT_OK, data);
+            finish();
+            return;
+        }
+
         releaseResult(result);
 
         new AlertDialog.Builder(this)
@@ -253,21 +265,18 @@ public class ScanActivity extends AppCompatActivity {
 
     /**
      * Прокидывает результат вызывающей Activity, чтобы MainActivity мог
-     * перейти в найденный контейнер.
+     * перейти в найденный контейнер. Для товаров не вызывается: они
+     * обрабатываются в {@link #showResult} сразу с закрытием сканера.
      */
     private void releaseResult(LookupResult result) {
-        int itemId = 0;
         int boxId = 0;
 
-        if ("item".equals(result.kind) && result.item != null) {
-            itemId = result.item.id;
-            boxId = result.item.box_id != null ? result.item.box_id : 0;
-        } else if ("box".equals(result.kind) && result.box != null) {
+        if ("box".equals(result.kind) && result.box != null) {
             boxId = result.box.id;
         }
 
         setResult(RESULT_OK, new Intent()
-                .putExtra(RESULT_ITEM_ID, itemId)
+                .putExtra(RESULT_ITEM_ID, 0)
                 .putExtra(RESULT_BOX_ID, boxId));
 
         // Снимаем «кулдаун»: после закрытия диалога можно сканировать тот же код заново.
