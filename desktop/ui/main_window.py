@@ -377,8 +377,11 @@ class MainWindow:
         search_frame = ctk.CTkFrame(main_frame, fg_color='transparent')
         search_frame.pack(fill='x', pady=(0, 10))
 
-        ctk.CTkLabel(search_frame, text='Поиск:',
-                     text_color=theme.palette().text).pack(side='left', padx=(0, 6))
+        # Подпись хранится как атрибут: при смене темы перекрашивается в
+        # _retopaint_chrome(), иначе в светлой теме оставался тёмный текст.
+        self._search_label = ctk.CTkLabel(search_frame, text='Поиск:',
+                                          text_color=theme.palette().text)
+        self._search_label.pack(side='left', padx=(0, 6))
         self.search_var = ctk.StringVar()
         self.search_var.trace_add('write', lambda *_: self._on_search())
         search_entry = ctk.CTkEntry(search_frame, textvariable=self.search_var,
@@ -396,9 +399,10 @@ class MainWindow:
         left_frame.pack(side='left', fill='y', padx=(0, 0))
         left_frame.pack_propagate(False)
 
-        ctk.CTkLabel(left_frame, text='Структура склада',
-                     font=ctk.CTkFont(size=14, weight='bold')).pack(anchor='w',
-                                                                    pady=(2, 6))
+        self._tree_title = ctk.CTkLabel(left_frame, text='Структура склада',
+                                        font=ctk.CTkFont(size=14, weight='bold'),
+                                        text_color=theme.palette().text)
+        self._tree_title.pack(anchor='w', pady=(2, 6))
 
         # Кнопки управления деревом
         tree_btn_frame = ctk.CTkFrame(left_frame, fg_color='transparent')
@@ -425,9 +429,10 @@ class MainWindow:
                                    corner_radius=0, border_width=0)
         right_frame.pack(side='left', fill='both', expand=True)
 
-        # Заголовок
+        # Заголовок (перекрашивается при смене темы)
         self.items_header = ctk.CTkLabel(right_frame, text='Все товары',
-                                         font=ctk.CTkFont(size=14, weight='bold'))
+                                         font=ctk.CTkFont(size=14, weight='bold'),
+                                         text_color=theme.palette().text)
         self.items_header.pack(anchor='w', pady=(2, 6))
 
         # Кнопки управления товарами
@@ -482,6 +487,13 @@ class MainWindow:
             self._status_bar.configure(fg_color=pal.panel_bg)
             self._status_label.configure(text_color=pal.muted_text)
             self._status_sep.configure(fg_color=pal.border)
+        # Подписи вне верхней панели
+        if hasattr(self, '_search_label'):
+            self._search_label.configure(text_color=pal.text)
+        if hasattr(self, 'items_header'):
+            self.items_header.configure(text_color=pal.text)
+        if hasattr(self, '_tree_title'):
+            self._tree_title.configure(text_color=pal.text)
 
     # ------------------------------------------------------------------ data
     def refresh_items(self):

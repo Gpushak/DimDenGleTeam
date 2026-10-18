@@ -11,12 +11,25 @@ from models import Box, ItemType, Item
 from ui import theme
 
 
-def _center_dialog(dialog: ctk.CTkToplevel, parent, width: int, height: int):
-    """Разместить диалог по центру родительского окна."""
+def _center_dialog(dialog: ctk.CTkToplevel, parent, width: int):
+    """Разместить диалог по центру родительского окна.
+
+    Ширина задаётся явно (с запасом под содержимое), а высота берётся
+    равной естественному размеру — иначе под кнопками «Сохранить/Отмена»
+    оставалась пустая область от фиксированного geometry().
+    """
     dialog.update_idletasks()
+    height = max(dialog.winfo_reqheight(), 1)
     x = parent.winfo_rootx() + (parent.winfo_width() - width) // 2
     y = parent.winfo_rooty() + (parent.winfo_height() - height) // 2
     dialog.geometry(f'{width}x{height}+{max(x, 0)}+{max(y, 0)}')
+
+
+def _fit_dialog(dialog: ctk.CTkToplevel, parent, min_width: int):
+    """Вызвать после создания виджетов: подогнать размер под содержимое."""
+    dialog.update_idletasks()
+    width = max(dialog.winfo_reqwidth(), min_width)
+    _center_dialog(dialog, parent, width)
 
 
 class BoxDialog:
@@ -31,10 +44,10 @@ class BoxDialog:
         self.dialog.title('Новый контейнер' if mode == 'add' else 'Редактировать контейнер')
         self.dialog.transient(parent)
         self.dialog.resizable(False, False)
-        _center_dialog(self.dialog, parent, 460, 260)
         self.dialog.grab_set()
 
         self._create_widgets(parent_id)
+        _fit_dialog(self.dialog, parent, 460)
         self.dialog.wait_window()
 
     def _create_widgets(self, default_parent_id: Optional[int]):
@@ -172,12 +185,12 @@ class ItemTypeDialog:
         self.dialog.title('Новый тип товара' if mode == 'add' else 'Редактировать тип товара')
         self.dialog.transient(parent)
         self.dialog.resizable(False, False)
-        _center_dialog(self.dialog, parent, 460, 210)
         self.dialog.grab_set()
         # Страховка: закрытие крестиком тоже должно остановить таймер.
         self.dialog.bind('<Destroy>', lambda _event: setattr(self, '_closed', True))
 
         self._create_widgets()
+        _fit_dialog(self.dialog, parent, 460)
         self.dialog.wait_window()
 
     def _create_widgets(self):
@@ -322,10 +335,10 @@ class ItemDialog:
         self.dialog.title('Новый товар' if mode == 'add' else 'Редактировать товар')
         self.dialog.transient(parent)
         self.dialog.resizable(False, False)
-        _center_dialog(self.dialog, parent, 500, 240)
         self.dialog.grab_set()
 
         self._create_widgets(default_box_id)
+        _fit_dialog(self.dialog, parent, 500)
         self.dialog.wait_window()
 
     def _create_widgets(self, default_box_id: Optional[int]):
