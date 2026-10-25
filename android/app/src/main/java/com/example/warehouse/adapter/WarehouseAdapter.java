@@ -94,7 +94,11 @@ public class WarehouseAdapter extends BaseAdapter {
             chevron.setVisibility(View.VISIBLE);
         } else {
             title.setText(row.item.item_type_name);
-            StringBuilder sb = new StringBuilder("Кол-во: ").append(row.item.quantity);
+            StringBuilder sb = new StringBuilder();
+            if (row.item.box_name != null) {
+                sb.append(row.item.box_name).append(" · ");
+            }
+            sb.append("Кол-во: ").append(row.item.quantity);
             if (row.item.total_weight_g != null) {
                 sb.append(" · ").append(formatWeight(row.item.total_weight_g));
             }

@@ -36,6 +36,10 @@ public interface ApiService {
     @GET("lookup")
     Call<LookupResult> lookup(@Query("code") String code);
 
+    /** Позиции без контейнера — тот же список, что «Без расположения» на десктопе. */
+    @GET("items")
+    Call<List<ItemSummary>> getUnboxedItems(@Query("unboxed") boolean unboxed);
+
     /** Полная запись позиции (ответ совпадает с форматом GET /items/{id}). */
     @GET("items/{itemId}")
     Call<ItemSummary> getItem(@Path("itemId") int itemId);

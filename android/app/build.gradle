@@ -17,7 +17,8 @@ android {
 
         // Адрес сервера можно переопределить без правки кода:
         //   ./gradlew assembleDebug -PapiHost=192.168.1.50 -PapiPort=8000
-        def apiHost = (project.findProperty("apiHost") ?: System.getenv("API_HOST") ?: "10.0.2.2")
+        // Общий сервер склада в LAN. 10.0.2.2 — только эмулятор, если API поднят на том же ПК.
+        def apiHost = (project.findProperty("apiHost") ?: System.getenv("API_HOST") ?: "192.168.0.9")
         def apiPort = (project.findProperty("apiPort") ?: System.getenv("API_PORT") ?: "8000")
         buildConfigField "String", "API_BASE_URL", "\"http://${apiHost}:${apiPort}/\""
     }

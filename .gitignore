@@ -24,6 +24,7 @@ android/local.properties
 
 # Секреты и локальные настройки
 .env
+desktop/server_url.txt
 
 # Временные файлы агента (SSH-хелперы и т.п.)
 .agent_tmp/

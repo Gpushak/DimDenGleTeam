@@ -60,9 +60,8 @@ public class ApiClient {
                 .readTimeout(15, TimeUnit.SECONDS)
                 .build();
 
-        // serializeNulls нужен для PATCH /items/{id}: null в box_id означает
-        // «вынуть позицию из контейнера», и это поле должно попасть в JSON.
-        Gson gson = new Gson().newBuilder().serializeNulls().create();
+        // Сериализатор ItemUpdateBody сам решает, какие поля попадут в JSON.
+        Gson gson = ItemUpdateBody.gson();
 
         return new Retrofit.Builder()
                 .baseUrl(baseUrl)

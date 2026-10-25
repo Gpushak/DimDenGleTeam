@@ -19,10 +19,10 @@ def main():
         error_root.withdraw()
         messagebox.showerror(
             'Сервер недоступен',
-            f'{error}\n\nСначала запустите API:\n'
-            '  docker compose up -d api\n'
-            '  или локально:\n'
-            '  cd server && uvicorn app.main:app --host 0.0.0.0 --port 8000',
+            f'{error}\n\nПриложение не хранит свою базу: данные только на сервере\n'
+            f'{api_base_url()}\n\n'
+            'Проверьте, что контейнер warehouse-api запущен, '
+            'и укажите другой адрес переменной API_BASE_URL.',
             parent=error_root,
         )
         error_root.destroy()

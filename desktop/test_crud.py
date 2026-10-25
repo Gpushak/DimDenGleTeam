@@ -17,6 +17,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from crud import NO_LOCATION, BoxIndex, search_items  # noqa: E402
+from database import normalize_base_url  # noqa: E402
 from models import Box, Item  # noqa: E402
 
 
@@ -192,6 +193,24 @@ class ItemModelTest(unittest.TestCase):
             "id": 1, "item_type_id": 1, "quantity": 1,
         })
         self.assertEqual(item.item_type.item_type_name, "—")
+
+
+class ServerUrlTest(unittest.TestCase):
+    def test_adds_scheme_and_strips_slash(self):
+        self.assertEqual(
+            normalize_base_url("192.168.0.9:8000/"),
+            "http://192.168.0.9:8000",
+        )
+
+    def test_keeps_explicit_scheme(self):
+        self.assertEqual(
+            normalize_base_url("http://warehouse-server.tail96180b.ts.net:8000"),
+            "http://warehouse-server.tail96180b.ts.net:8000",
+        )
+
+    def test_rejects_empty(self):
+        with self.assertRaises(ValueError):
+            normalize_base_url("   ")
 
 
 if __name__ == "__main__":

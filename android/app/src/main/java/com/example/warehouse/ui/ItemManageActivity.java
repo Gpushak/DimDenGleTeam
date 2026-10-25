@@ -205,22 +205,23 @@ public class ItemManageActivity extends AppCompatActivity {
                     return;
                 }
                 List<BoxNode> flat = new ArrayList<>();
-                flatten(response.body(), "", flat);
+                List<String> paths = new ArrayList<>();
+                flatten(response.body(), "", flat, paths);
 
                 // +1 пункт «без контейнера» в начале списка.
                 CharSequence[] labels = new CharSequence[flat.size() + 1];
-                labels[0] = "⟶ Вынуть из контейнера";
+                labels[0] = "Вынуть из контейнера";
                 for (int i = 0; i < flat.size(); i++) {
                     BoxNode node = flat.get(i);
                     boolean here = item.box_id != null && item.box_id == node.id;
-                    labels[i + 1] = node.name + (here ? "  (текущий)" : "");
+                    labels[i + 1] = paths.get(i) + (here ? "  (текущий)" : "");
                 }
 
                 new AlertDialog.Builder(ItemManageActivity.this)
                         .setTitle("Переместить в контейнер")
                         .setItems(labels, (dialog, which) -> {
                             Integer targetBoxId = which == 0 ? null : flat.get(which - 1).id;
-                            patch(ItemUpdateBody.moveTo(targetBoxId), false);
+                            patch(ItemUpdateBody.moveTo(targetBoxId), true);
                         })
                         .setNegativeButton("Отмена", null)
                         .show();
@@ -234,14 +235,17 @@ public class ItemManageActivity extends AppCompatActivity {
         });
     }
 
-    /** Обход дерева в плоский список с путями в названиях для читаемости. */
-    private static void flatten(List<BoxNode> nodes, String prefix, List<BoxNode> out) {
+    /** Обход дерева в плоский список. В подписи — полный путь, иначе две «Полка 1» неотличимы. */
+    private static void flatten(List<BoxNode> nodes, String prefix,
+                                List<BoxNode> out, List<String> labels) {
         if (nodes == null) {
             return;
         }
         for (BoxNode node : nodes) {
+            String label = prefix + node.name;
             out.add(node);
-            flatten(node.children, prefix + node.name + " / ", out);
+            labels.add(label);
+            flatten(node.children, label + " / ", out, labels);
         }
     }
 
@@ -284,10 +288,9 @@ public class ItemManageActivity extends AppCompatActivity {
     }
 
     /**
-     * Отправка PATCH /items/{id}. При успехе перечитываем позицию и ставим
-     * RESULT_CHANGED, если список родителя нужно обновить (changed == true:
-     * менялись количество или тип — они видны в текущем контейнере; при
-     * перемещении позиция уходит в другой контейнер, changed == false).
+     * Отправка PATCH /items/{id}. При успехе перечитываем позицию.
+     * changed == true просит главный экран заново прочитать список: после
+     * перемещения позиция может покинуть открытый контейнер.
      */
     private void patch(ItemUpdateBody body, boolean changed) {
         setLoading(true);

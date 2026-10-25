@@ -3,10 +3,10 @@ package com.example.warehouse.ui;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.os.Bundle;
+import android.text.InputType;
 import android.view.View;
+import android.widget.EditText;
 import android.widget.Toast;
-
-import com.google.android.material.textfield.TextInputEditText;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
@@ -14,12 +14,12 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.example.warehouse.BuildConfig;
-import com.example.warehouse.R;
 import com.example.warehouse.adapter.WarehouseAdapter;
 import com.example.warehouse.data.api.ApiClient;
 import com.example.warehouse.data.api.ServerConfig;
 import com.example.warehouse.data.model.BoxContents;
 import com.example.warehouse.data.model.BoxNode;
+import com.example.warehouse.data.model.ItemSummary;
 import com.example.warehouse.databinding.ActivityMainBinding;
 
 import java.util.ArrayDeque;
@@ -45,6 +45,9 @@ public class MainActivity extends AppCompatActivity {
 
     /** Путь от корня к текущей ячейке (включая саму текущую). */
     private final Deque<BoxNode> path = new ArrayDeque<>();
+
+    /** Отбрасывает устаревший ответ «товары без контейнера», если корень уже ушли. */
+    private int unboxedGeneration;
 
     /** Запуск QR-сканера и реакция на его результат. */
     private final ActivityResultLauncher<Intent> scanLauncher =
@@ -78,6 +81,7 @@ public class MainActivity extends AppCompatActivity {
         setContentView(binding.getRoot());
 
         ApiClient.init(this);
+        showServerAddress();
 
         adapter = new WarehouseAdapter(this);
         binding.list.setAdapter(adapter);
@@ -199,45 +203,36 @@ public class MainActivity extends AppCompatActivity {
     /**
      * Реакция на результат QR-сканирования.
      *
-     * Отсканирован товар — открываем меню редактирования этой позиции
-     * (контейнер с позицией сначала открывается, чтобы кнопка «Назад» из
-     * редактора вернула к месту хранения товара). Если распознан только
-     * контейнер — переходим в него. Для типа товара навигации нет: просто
-     * сообщаем, что код относится к справочной записи.
+     * Если распознан контейнер — переходим в него и подсвечиваем отсканированную
+     * позицию в списке. Для типа товара навигации нет: просто сообщаем, что
+     * код относится к справочной записи.
      *
      * @param itemId идентификатор позиции товара (0 — если не товар)
      * @param boxId  идентификатор контейнера (0 — если неизвестен)
      */
     private void onScanned(int itemId, int boxId) {
-        if (itemId > 0) {
-            BoxNode target = boxId > 0 ? findNode(treeRoots, boxId) : null;
+        if (boxId > 0) {
+            BoxNode target = findNode(treeRoots, boxId);
             if (target != null) {
-                // Пересобираем путь от корня до контейнера с товаром,
+                // Пересобираем путь от корня до найденного контейнера,
                 // чтобы кнопка «Вверх» вела по иерархии, а не в пустоту.
                 path.clear();
                 collectPath(treeRoots, boxId, path);
                 loadContents(target);
-            } else if (boxId > 0) {
-                toast("Контейнер не найден в загруженном дереве — обновите");
-                return;
-            }
-            openItemEditor(itemId);
-            return;
-        }
-
-        if (boxId > 0) {
-            BoxNode target = findNode(treeRoots, boxId);
-            if (target != null) {
-                path.clear();
-                collectPath(treeRoots, boxId, path);
-                loadContents(target);
+                if (itemId > 0) {
+                    highlightItem(itemId);
+                }
                 return;
             }
             toast("Контейнер не найден в загруженном дереве — обновите");
             return;
         }
 
-        toast("Отсканирован тип товара — см. сведения в сканере");
+        if (itemId > 0) {
+            openItemEditor(itemId);
+        } else {
+            toast("Отсканирован тип товара — см. сведения в сканере");
+        }
     }
 
     /** Ищет контейнер по id в дереве, загруженном из /boxes/tree. */
@@ -275,11 +270,81 @@ public class MainActivity extends AppCompatActivity {
         return false;
     }
 
+    /**
+     * Сообщает пользователю позицию товара в открытом контейнере.
+     *
+     * Список в адаптере плоский, а {@code item_id} в {@link WarehouseAdapter.Row}
+     * не хранится, поэтому программно выделить строку нельзя. Вместо этого
+     * показываем понятное уведомление с номером позиции.
+     */
+    private void highlightItem(int itemId) {
+        toast("Позиция #" + itemId + " — в открытом контейнере");
+    }
+
     private void goUp() {
         if (!path.isEmpty()) {
             path.removeLast();
             renderLevel();
         }
+    }
+
+    /**
+     * Корень склада: контейнеры верхнего уровня и позиции без контейнера.
+     * Вторые есть на сервере и в десктопе, в дереве коробок их нет.
+     */
+    private void showRoots() {
+        List<WarehouseAdapter.Row> rows = new ArrayList<>();
+        if (treeRoots != null) {
+            for (BoxNode node : treeRoots) {
+                rows.add(WarehouseAdapter.Row.ofBox(node));
+            }
+        }
+        adapter.setRows(rows);
+
+        final int generation = ++unboxedGeneration;
+        ApiClient.api().getUnboxedItems(true).enqueue(new Callback<List<ItemSummary>>() {
+            @Override
+            public void onResponse(Call<List<ItemSummary>> call,
+                                   Response<List<ItemSummary>> response) {
+                if (generation != unboxedGeneration || !path.isEmpty()) {
+                    return;
+                }
+                if (!response.isSuccessful() || response.body() == null) {
+                    toast("Ошибка загрузки товаров без контейнера: " + response.code());
+                    return;
+                }
+                List<WarehouseAdapter.Row> combined = new ArrayList<>();
+                if (treeRoots != null) {
+                    for (BoxNode node : treeRoots) {
+                        combined.add(WarehouseAdapter.Row.ofBox(node));
+                    }
+                }
+                for (ItemSummary summary : response.body()) {
+                    combined.add(WarehouseAdapter.Row.ofItem(toUnboxedRow(summary)));
+                }
+                adapter.setRows(combined);
+            }
+
+            @Override
+            public void onFailure(Call<List<ItemSummary>> call, Throwable t) {
+                if (generation != unboxedGeneration || !path.isEmpty()) {
+                    return;
+                }
+                toast("Сеть недоступна: " + t.getMessage());
+            }
+        });
+    }
+
+    private static BoxContents.ItemRow toUnboxedRow(ItemSummary summary) {
+        BoxContents.ItemRow row = new BoxContents.ItemRow();
+        row.item_id = summary.id;
+        row.item_type_id = summary.item_type_id;
+        row.item_type_name = summary.item_type_name;
+        row.weight_g = summary.weight_g;
+        row.quantity = summary.quantity;
+        row.total_weight_g = summary.total_weight_g;
+        row.box_name = "Без расположения";
+        return row;
     }
 
     /**
@@ -289,13 +354,7 @@ public class MainActivity extends AppCompatActivity {
         updatePathLabel();
 
         if (path.isEmpty()) {
-            List<WarehouseAdapter.Row> rows = new ArrayList<>();
-            if (treeRoots != null) {
-                for (BoxNode node : treeRoots) {
-                    rows.add(WarehouseAdapter.Row.ofBox(node));
-                }
-            }
-            adapter.setRows(rows);
+            showRoots();
             return;
         }
 
@@ -342,13 +401,21 @@ public class MainActivity extends AppCompatActivity {
                 });
     }
 
-    private static BoxNode toNode(BoxContents.ChildBox child) {
+    private BoxNode toNode(BoxContents.ChildBox child) {
+        BoxNode known = findNode(treeRoots, child.id);
+        if (known != null) {
+            return known;
+        }
         BoxNode node = new BoxNode();
         node.id = child.id;
         node.name = child.name;
         node.box_type_id = child.box_type_id;
         node.box_type_name = child.box_type_name;
         return node;
+    }
+
+    private void showServerAddress() {
+        binding.tvServer.setText("Сервер: " + ServerConfig.getBaseUrl(this));
     }
 
     private void updatePathLabel() {
@@ -369,37 +436,34 @@ public class MainActivity extends AppCompatActivity {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
     }
 
-    /**
-     * Диалог настройки адреса сервера (для реального телефона — IP компьютера
-     * в LAN). Компактный вид: только поле ввода и кнопки, без лишних подсказок.
-     */
+    /** Диалог настройки адреса сервера (для реального телефона — IP компьютера в LAN). */
     private void showServerDialog() {
-        View content = getLayoutInflater().inflate(
-                R.layout.dialog_server_config, null);
-        TextInputEditText etBaseUrl = content.findViewById(R.id.etBaseUrl);
-
-        String saved = ServerConfig.getBaseUrl(this);
-        // В поле показываем адрес без схемы и завершающего «/» — normalize
-        // при сохранении вернёт их обратно.
-        etBaseUrl.setText(saved.replaceFirst("^https?://", "").replaceAll("/$", ""));
-        etBaseUrl.setSelection(etBaseUrl.getText().length());
+        EditText input = new EditText(this);
+        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+        input.setText(ServerConfig.getBaseUrl(this));
+        input.setSelection(input.getText().length());
 
         new AlertDialog.Builder(this)
-                .setTitle("Сервер")
-                .setView(content)
+                .setTitle("Адрес сервера")
+                .setMessage("Общий сервер склада, без локальной базы.\n"
+                        + "В сети лаборатории: http://192.168.0.9:8000\n"
+                        + "Из другой сети (Tailscale): "
+                        + "http://warehouse-server.tail96180b.ts.net:8000")
+                .setView(input)
                 .setPositiveButton("Сохранить", (DialogInterface dialog, int which) -> {
-                    String url = ServerConfig.normalize(etBaseUrl.getText().toString());
+                    String url = ServerConfig.normalize(input.getText().toString());
                     if (url.isEmpty()) {
                         toast("Адрес не может быть пустым");
                         return;
                     }
                     ServerConfig.setBaseUrl(this, url);
+                    showServerAddress();
                     toast("Сервер: " + url);
                     loadTree();
                 })
                 .setNeutralButton("Сбросить", (DialogInterface dialog, int which) -> {
                     ServerConfig.clearBaseUrl(this);
-                    ApiClient.init(this);
+                    showServerAddress();
                     toast("Использован адрес по умолчанию: "
                             + BuildConfig.API_BASE_URL);
                     loadTree();

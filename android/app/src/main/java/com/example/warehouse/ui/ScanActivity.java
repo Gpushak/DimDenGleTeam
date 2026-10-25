@@ -67,19 +67,15 @@ public class ScanActivity extends AppCompatActivity {
     /** Идентификатор контейнера, где лежит товар (0 — неизвестно). */
     public static final String RESULT_BOX_ID = "box_id";
 
-    private static final long RESCAN_COOLDOWN_MS = 1200L;
-
     private ActivityScanBinding binding;
     private ExecutorService analysisExecutor;
     private BarcodeScanner scanner;
+    private AlertDialog resultDialog;
 
     /** Пока идёт распознавание кадра — чтобы не нагружать ML Kit. */
     private final AtomicBoolean analyzing = new AtomicBoolean(false);
-    /** Недавно обработанный код: защита от повторного запроса на каждый кадр. */
-    private volatile String lastPayload;
-    private volatile long lastScanAt;
-    /** Запрос к серверу уже в работе — не отправляем новый до ответа. */
-    private volatile boolean requestInFlight;
+    /** Один диалог на код, пока этикетка остаётся в кадре. */
+    private final ScanGate gate = new ScanGate();
 
     private final ActivityResultLauncher<String> permissionLauncher =
             registerForActivityResult(new ActivityResultContracts.RequestPermission(),
@@ -170,30 +166,23 @@ public class ScanActivity extends AppCompatActivity {
 
     private void onBarcodes(List<Barcode> barcodes) {
         if (barcodes.isEmpty()) {
+            gate.onFrameWithoutCode();
             return;
         }
 
         String raw = barcodes.get(0).getRawValue();
         QrCode code = QrCode.parse(raw);
         if (code == null) {
-            // Чужой QR-код: сообщаем один раз, чтобы не спамить на каждом кадре.
-            if (!String.valueOf(raw).equals(lastPayload)) {
-                lastPayload = String.valueOf(raw);
-                runOnUiThread(() -> setStatus("Это не складской QR-код. Ожидается " + QrCode.SCHEME + ":item|type|box:<id>"));
+            if (gate.shouldReportForeign(raw)) {
+                runOnUiThread(() -> setStatus("Это не складской QR-код. Ожидается "
+                        + QrCode.SCHEME + ":item|type|box:<id>"));
             }
             return;
         }
 
-        long now = System.currentTimeMillis();
-        if (requestInFlight) {
+        if (!gate.shouldLookup(code.payload())) {
             return;
         }
-        if (code.payload().equals(lastPayload) && now - lastScanAt < RESCAN_COOLDOWN_MS) {
-            return;
-        }
-
-        lastPayload = code.payload();
-        lastScanAt = now;
         runOnUiThread(() -> lookup(code));
     }
 
@@ -206,90 +195,72 @@ public class ScanActivity extends AppCompatActivity {
     // ────────────────────────────────────────────────────── запрос к серверу
 
     private void lookup(QrCode code) {
-        requestInFlight = true;
         binding.progress.setVisibility(View.VISIBLE);
         setStatus("Запрос " + code.payload() + " …");
 
         ApiClient.api().lookup(code.payload()).enqueue(new Callback<LookupResult>() {
             @Override
             public void onResponse(Call<LookupResult> call, Response<LookupResult> response) {
-                requestInFlight = false;
                 binding.progress.setVisibility(View.GONE);
 
                 LookupResult body = response.body();
                 if (response.isSuccessful() && body != null) {
-                    showResult(code, body);
+                    showResult(body);
                 } else {
                     setStatus("Сервер не нашёл объект по коду " + code.payload()
                             + " (HTTP " + response.code() + ")");
-                    // body здесь может быть null — результат не сбрасываем,
-                    // чтобы MainActivity не пытался перейти по несуществующему id.
                     setResult(RESULT_CANCELED);
-                    resetScanGuard();
+                    gate.onLookupFailed();
                 }
             }
 
             @Override
             public void onFailure(Call<LookupResult> call, Throwable t) {
-                requestInFlight = false;
                 binding.progress.setVisibility(View.GONE);
                 setStatus("Сеть недоступна: " + t.getMessage());
+                gate.onLookupFailed();
             }
         });
     }
 
-    private void showResult(QrCode code, LookupResult result) {
-        setStatus("Найдено: " + describe(result));
-
-        // Товар: сразу закрываем сканер с результатом — вызывающий экран
-        // (MainActivity) откроет меню редактирования этой позиции.
-        if ("item".equals(result.kind) && result.item != null) {
-            Intent data = new Intent()
-                    .putExtra(RESULT_ITEM_ID, result.item.id)
-                    .putExtra(RESULT_BOX_ID,
-                            result.item.box_id != null ? result.item.box_id : 0);
-            setResult(RESULT_OK, data);
-            finish();
+    private void showResult(LookupResult result) {
+        if (isFinishing()) {
+            gate.onDialogDismissed();
+            return;
+        }
+        if (resultDialog != null && resultDialog.isShowing()) {
             return;
         }
 
+        setStatus("Найдено: " + describe(result));
         releaseResult(result);
 
-        new AlertDialog.Builder(this)
+        resultDialog = new AlertDialog.Builder(this)
                 .setTitle(titleFor(result))
                 .setMessage(messageFor(result))
                 .setPositiveButton("Закрыть", (dialog, which) -> dialog.dismiss())
-                .setOnDismissListener(dialog -> resetScanGuard())
+                .setOnDismissListener(dialog -> gate.onDialogDismissed())
                 .show();
     }
 
     /**
      * Прокидывает результат вызывающей Activity, чтобы MainActivity мог
-     * перейти в найденный контейнер. Для товаров не вызывается: они
-     * обрабатываются в {@link #showResult} сразу с закрытием сканера.
+     * перейти в найденный контейнер.
      */
     private void releaseResult(LookupResult result) {
+        int itemId = 0;
         int boxId = 0;
 
-        if ("box".equals(result.kind) && result.box != null) {
+        if ("item".equals(result.kind) && result.item != null) {
+            itemId = result.item.id;
+            boxId = result.item.box_id != null ? result.item.box_id : 0;
+        } else if ("box".equals(result.kind) && result.box != null) {
             boxId = result.box.id;
         }
 
         setResult(RESULT_OK, new Intent()
-                .putExtra(RESULT_ITEM_ID, 0)
+                .putExtra(RESULT_ITEM_ID, itemId)
                 .putExtra(RESULT_BOX_ID, boxId));
-
-        // Снимаем «кулдаун»: после закрытия диалога можно сканировать тот же код заново.
-        lastScanAt = 0;
-    }
-
-    /**
-     * Сбрасывает защиту от повторного срабатывания, когда диалог закрыт:
-     * тот же код можно отсканировать снова намеренно.
-     */
-    private void resetScanGuard() {
-        lastPayload = null;
-        lastScanAt = 0;
     }
 
     // ─────────────────────────────────────────────────────── форматирование
@@ -405,6 +376,7 @@ public class ScanActivity extends AppCompatActivity {
                         setStatus("Неверный формат. Ожидается " + QrCode.SCHEME + ":item|type|box:<id>");
                         toast("Неверный формат кода");
                     } else {
+                        gate.hold(code.payload());
                         lookup(code);
                     }
                 })
@@ -424,6 +396,9 @@ public class ScanActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
+        if (resultDialog != null && resultDialog.isShowing()) {
+            resultDialog.dismiss();
+        }
         super.onDestroy();
         if (analysisExecutor != null) {
             analysisExecutor.shutdown();
