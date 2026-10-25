@@ -3,9 +3,7 @@ package com.example.warehouse.ui;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.os.Bundle;
-import android.text.InputType;
 import android.view.View;
-import android.widget.EditText;
 import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
@@ -14,6 +12,7 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.example.warehouse.BuildConfig;
+import com.example.warehouse.R;
 import com.example.warehouse.adapter.WarehouseAdapter;
 import com.example.warehouse.data.api.ApiClient;
 import com.example.warehouse.data.api.ServerConfig;
@@ -21,6 +20,7 @@ import com.example.warehouse.data.model.BoxContents;
 import com.example.warehouse.data.model.BoxNode;
 import com.example.warehouse.data.model.ItemSummary;
 import com.example.warehouse.databinding.ActivityMainBinding;
+import com.google.android.material.textfield.TextInputEditText;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -81,7 +81,6 @@ public class MainActivity extends AppCompatActivity {
         setContentView(binding.getRoot());
 
         ApiClient.init(this);
-        showServerAddress();
 
         adapter = new WarehouseAdapter(this);
         binding.list.setAdapter(adapter);
@@ -150,12 +149,16 @@ public class MainActivity extends AppCompatActivity {
         loadContents(box);
     }
 
-    /** Открывает экран редактирования позиции товара текущего контейнера. */
+    /** Открывает экран редактирования позиции товара. */
     private void openItemEditor(int itemId) {
+        BoxNode current = path.peekLast();
+        openItemEditor(itemId, current != null ? current.id : 0);
+    }
+
+    private void openItemEditor(int itemId, int boxId) {
         Intent intent = new Intent(this, ItemManageActivity.class);
         intent.putExtra(ItemManageActivity.EXTRA_ITEM_ID, itemId);
-        BoxNode current = path.peekLast();
-        intent.putExtra(ItemManageActivity.EXTRA_BOX_ID, current != null ? current.id : 0);
+        intent.putExtra(ItemManageActivity.EXTRA_BOX_ID, boxId);
         itemManageLauncher.launch(intent);
     }
 
@@ -203,36 +206,26 @@ public class MainActivity extends AppCompatActivity {
     /**
      * Реакция на результат QR-сканирования.
      *
-     * Если распознан контейнер — переходим в него и подсвечиваем отсканированную
-     * позицию в списке. Для типа товара навигации нет: просто сообщаем, что
-     * код относится к справочной записи.
-     *
-     * @param itemId идентификатор позиции товара (0 — если не товар)
-     * @param boxId  идентификатор контейнера (0 — если неизвестен)
+     * Товар открывается в редакторе. Контейнер — переход в него.
+     * Тип товара остаётся в диалоге сканера.
      */
     private void onScanned(int itemId, int boxId) {
+        if (itemId > 0) {
+            openItemEditor(itemId, boxId);
+            return;
+        }
         if (boxId > 0) {
             BoxNode target = findNode(treeRoots, boxId);
             if (target != null) {
-                // Пересобираем путь от корня до найденного контейнера,
-                // чтобы кнопка «Вверх» вела по иерархии, а не в пустоту.
                 path.clear();
                 collectPath(treeRoots, boxId, path);
                 loadContents(target);
-                if (itemId > 0) {
-                    highlightItem(itemId);
-                }
                 return;
             }
             toast("Контейнер не найден в загруженном дереве — обновите");
             return;
         }
-
-        if (itemId > 0) {
-            openItemEditor(itemId);
-        } else {
-            toast("Отсканирован тип товара — см. сведения в сканере");
-        }
+        toast("Отсканирован тип товара — см. сведения в сканере");
     }
 
     /** Ищет контейнер по id в дереве, загруженном из /boxes/tree. */
@@ -268,17 +261,6 @@ public class MainActivity extends AppCompatActivity {
             }
         }
         return false;
-    }
-
-    /**
-     * Сообщает пользователю позицию товара в открытом контейнере.
-     *
-     * Список в адаптере плоский, а {@code item_id} в {@link WarehouseAdapter.Row}
-     * не хранится, поэтому программно выделить строку нельзя. Вместо этого
-     * показываем понятное уведомление с номером позиции.
-     */
-    private void highlightItem(int itemId) {
-        toast("Позиция #" + itemId + " — в открытом контейнере");
     }
 
     private void goUp() {
@@ -414,10 +396,6 @@ public class MainActivity extends AppCompatActivity {
         return node;
     }
 
-    private void showServerAddress() {
-        binding.tvServer.setText("Сервер: " + ServerConfig.getBaseUrl(this));
-    }
-
     private void updatePathLabel() {
         binding.btnUp.setEnabled(!path.isEmpty());
 
@@ -436,34 +414,32 @@ public class MainActivity extends AppCompatActivity {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
     }
 
-    /** Диалог настройки адреса сервера (для реального телефона — IP компьютера в LAN). */
+    /** Диалог настройки адреса сервера. */
     private void showServerDialog() {
-        EditText input = new EditText(this);
-        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
-        input.setText(ServerConfig.getBaseUrl(this));
-        input.setSelection(input.getText().length());
+        View view = getLayoutInflater().inflate(R.layout.dialog_server_config, null);
+        TextInputEditText input = view.findViewById(R.id.etBaseUrl);
+        String current = ServerConfig.getBaseUrl(this);
+        input.setText(current);
+        if (input.getText() != null) {
+            input.setSelection(input.getText().length());
+        }
 
         new AlertDialog.Builder(this)
-                .setTitle("Адрес сервера")
-                .setMessage("Общий сервер склада, без локальной базы.\n"
-                        + "В сети лаборатории: http://192.168.0.9:8000\n"
-                        + "Из другой сети (Tailscale): "
-                        + "http://warehouse-server.tail96180b.ts.net:8000")
-                .setView(input)
+                .setTitle("Сервер")
+                .setView(view)
                 .setPositiveButton("Сохранить", (DialogInterface dialog, int which) -> {
-                    String url = ServerConfig.normalize(input.getText().toString());
+                    CharSequence typed = input.getText();
+                    String url = ServerConfig.normalize(typed != null ? typed.toString() : "");
                     if (url.isEmpty()) {
                         toast("Адрес не может быть пустым");
                         return;
                     }
                     ServerConfig.setBaseUrl(this, url);
-                    showServerAddress();
                     toast("Сервер: " + url);
                     loadTree();
                 })
                 .setNeutralButton("Сбросить", (DialogInterface dialog, int which) -> {
                     ServerConfig.clearBaseUrl(this);
-                    showServerAddress();
                     toast("Использован адрес по умолчанию: "
                             + BuildConfig.API_BASE_URL);
                     loadTree();
