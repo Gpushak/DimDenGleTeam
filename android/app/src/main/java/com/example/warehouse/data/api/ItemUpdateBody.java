@@ -52,7 +52,11 @@ public class ItemUpdateBody {
     }
 
     public static Gson gson() {
+        // serializeNulls нужен, чтобы явное box_id: null дожило до строки.
+        // Сериализатор сам не кладёт поля, которые менять не просили, поэтому
+        // смена количества по-прежнему уходит как {"quantity": N}.
         return new GsonBuilder()
+                .serializeNulls()
                 .registerTypeAdapter(ItemUpdateBody.class, new Serializer())
                 .create();
     }

@@ -61,8 +61,6 @@ public class ApiClient {
                 .build();
 
         // Сериализатор ItemUpdateBody сам решает, какие поля попадут в JSON.
-        // Глобальный serializeNulls здесь вреден: незаданный box_id уехал бы
-        // как null и сервер вынул бы позицию из контейнера.
         Gson gson = ItemUpdateBody.gson();
 
         return new Retrofit.Builder()
