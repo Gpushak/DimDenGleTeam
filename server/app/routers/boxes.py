@@ -414,12 +414,15 @@ def move_box(box_id: int, move: BoxMove):
 
             result = get_box_or_404(db, box_id)
 
-    except sqlite3.IntegrityError:
-        # Здесь срабатывает триггер trg_box_no_cycle
-        # и ограничение UNIQUE(parent_id, box_name).
-        raise HTTPException(
-            status_code=409,
-            detail="Cannot move a box into its own descendant"
-        )
+    except sqlite3.IntegrityError as error:
+        # Триггер цикла и уникальность имени среди соседей оба дают
+        # IntegrityError. Текст различает их, иначе клиент показывает
+        # «цикл» при обычном конфликте имени.
+        message = str(error).lower()
+        if "cycle" in message:
+            detail = "Cannot move a box into its own descendant"
+        else:
+            detail = "A box with this name already exists at the same level"
+        raise HTTPException(status_code=409, detail=detail)
 
     return result

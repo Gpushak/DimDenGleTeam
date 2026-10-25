@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import os
 from typing import Any, Optional
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
@@ -18,7 +17,8 @@ class ApiError(Exception):
 
 class ApiClient:
     def __init__(self, base_url: Optional[str] = None, timeout: float = 8.0):
-        self.base_url = (base_url or os.getenv("API_BASE_URL", "http://127.0.0.1:8000")).rstrip("/")
+        from database import api_base_url
+        self.base_url = (base_url or api_base_url()).rstrip("/")
         self.timeout = timeout
 
     def health(self) -> dict:

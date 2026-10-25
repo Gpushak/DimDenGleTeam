@@ -13,6 +13,7 @@ from tkinter import messagebox
 from typing import Optional, List
 
 from api_client import ApiClient, ApiError
+from database import set_api_base_url, normalize_base_url
 
 import crud
 from qrutil import qr_payload, qr_png_bytes
@@ -412,6 +413,22 @@ class MainWindow:
         self.theme_switch.set(self._THEME_CAPTIONS[theme.current_mode()])
         self.theme_switch.pack(side='left', padx=(0, 10))
 
+        self._refresh_button = ctk.CTkButton(
+            right, text='Обновить', width=100, height=30,
+            corner_radius=8, border_width=0,
+            command=self._refresh_all,
+        )
+        self._refresh_button.pack(side='left', padx=(0, 8))
+
+        self._server_button = ctk.CTkButton(
+            right, text='Сервер', width=90, height=30,
+            corner_radius=8, border_width=0,
+            fg_color='transparent',
+            hover_color=pal.hover, text_color=pal.text,
+            command=self._show_server_dialog,
+        )
+        self._server_button.pack(side='left', padx=(0, 8))
+
         self._about_button = ctk.CTkButton(
             right, text='О программе', width=110, height=30,
             corner_radius=8, border_width=0,
@@ -435,7 +452,7 @@ class MainWindow:
     def _show_about(self):
         dialog = ctk.CTkToplevel(self.root)
         dialog.title('О программе')
-        dialog.geometry('420x300')
+        dialog.geometry('420x340')
         dialog.transient(self.root)
         dialog.resizable(False, False)
         try:
@@ -458,7 +475,8 @@ class MainWindow:
         ctk.CTkLabel(
             frame,
             text='Учёт товаров на складе: структура контейнеров,\n'
-                 'позиции, весы, QR-этикетки.\n\n'
+                 'позиции, весы, QR-этикетки.\n'
+                 'Своей базы нет — все данные на сервере.\n\n'
                  'Qwentory Team',
             justify='center', text_color=pal.text,
         ).pack(pady=14)
@@ -470,6 +488,69 @@ class MainWindow:
         x = self.root.winfo_rootx() + (self.root.winfo_width() - 420) // 2
         y = self.root.winfo_rooty() + (self.root.winfo_height() - 300) // 2
         dialog.geometry(f'+{max(x, 0)}+{max(y, 0)}')
+
+    def _show_server_dialog(self):
+        """Смена адреса общего сервера. Адрес проверяется запросом /health."""
+        dialog = ctk.CTkToplevel(self.root)
+        dialog.title('Сервер')
+        dialog.geometry('480x220')
+        dialog.transient(self.root)
+        dialog.resizable(False, False)
+        try:
+            dialog.grab_set()
+        except Exception:
+            pass
+
+        pal = theme.palette()
+        dialog.configure(fg_color=pal.window_bg)
+        frame = ctk.CTkFrame(dialog, fg_color='transparent')
+        frame.pack(fill='both', expand=True, padx=16, pady=14)
+
+        ctk.CTkLabel(
+            frame,
+            text='Склад хранится только на сервере. Локальной базы у приложения нет.',
+            wraplength=440, justify='left', text_color=pal.text,
+        ).pack(anchor='w')
+        entry = ctk.CTkEntry(frame, width=440, border_width=0)
+        entry.pack(fill='x', pady=(10, 4))
+        entry.insert(0, self.client.base_url)
+        ctk.CTkLabel(
+            frame,
+            text='Сейчас в сети: 192.168.0.9:8000, из другой сети — '
+                 'warehouse-server.tail96180b.ts.net:8000',
+            wraplength=440, justify='left', text_color=pal.muted_text,
+        ).pack(anchor='w', pady=(0, 12))
+
+        def save():
+            try:
+                url = normalize_base_url(entry.get())
+            except ValueError as error:
+                messagebox.showerror('Сервер', str(error), parent=dialog)
+                return
+            probe = ApiClient(url)
+            try:
+                health = probe.health()
+            except ApiError as error:
+                messagebox.showerror('Сервер', str(error), parent=dialog)
+                return
+            set_api_base_url(url)
+            self.client.base_url = url
+            self._refresh_all()
+            messagebox.showinfo(
+                'Сервер',
+                f'Подключено к {url}\n'
+                f'База сервера: {health.get("database_path", "—")}',
+                parent=dialog,
+            )
+            dialog.destroy()
+
+        buttons = ctk.CTkFrame(frame, fg_color='transparent')
+        buttons.pack(anchor='e')
+        ctk.CTkButton(buttons, text='Сохранить', width=120, border_width=0,
+                      command=save).pack(side='left', padx=(0, 8))
+        ctk.CTkButton(buttons, text='Отмена', width=100, border_width=0,
+                      fg_color='transparent', hover_color=pal.hover, text_color=pal.text,
+                      command=dialog.destroy).pack(side='left')
 
     # ============================================================== содержимое
     def _create_widgets(self):
@@ -588,6 +669,7 @@ class MainWindow:
             self._topbar_title.configure(text_color=pal.text)
             self._theme_label.configure(text_color=pal.muted_text)
             self._about_button.configure(hover_color=pal.hover, text_color=pal.text)
+            self._server_button.configure(hover_color=pal.hover, text_color=pal.text)
             self._topbar_sep.configure(fg_color=pal.border)
         if hasattr(self, '_status_bar'):
             self._status_bar.configure(fg_color=pal.panel_bg)
@@ -787,8 +869,8 @@ class MainWindow:
         if self.scale_monitor and self.scale_monitor.last_weight is not None:
             scale = f' | Весы: {self.scale_monitor.last_weight:.1f} г'
         self.status_var.set(
-            f'Позиций: {len(items)} | Общее кол-во: {total_qty} '
-            f'| Общий вес: {format_weight(total_weight)}{scale}'
+            f'Сервер: {self.client.base_url} | Позиций: {len(items)} | '
+            f'Общее кол-во: {total_qty} | Общий вес: {format_weight(total_weight)}{scale}'
         )
 
     def _render_items_table(self):

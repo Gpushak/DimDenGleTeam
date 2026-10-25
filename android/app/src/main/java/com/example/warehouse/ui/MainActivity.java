@@ -19,6 +19,7 @@ import com.example.warehouse.data.api.ApiClient;
 import com.example.warehouse.data.api.ServerConfig;
 import com.example.warehouse.data.model.BoxContents;
 import com.example.warehouse.data.model.BoxNode;
+import com.example.warehouse.data.model.ItemSummary;
 import com.example.warehouse.databinding.ActivityMainBinding;
 
 import java.util.ArrayDeque;
@@ -44,6 +45,9 @@ public class MainActivity extends AppCompatActivity {
 
     /** Путь от корня к текущей ячейке (включая саму текущую). */
     private final Deque<BoxNode> path = new ArrayDeque<>();
+
+    /** Отбрасывает устаревший ответ «товары без контейнера», если корень уже ушли. */
+    private int unboxedGeneration;
 
     /** Запуск QR-сканера и реакция на его результат. */
     private final ActivityResultLauncher<Intent> scanLauncher =
@@ -77,6 +81,7 @@ public class MainActivity extends AppCompatActivity {
         setContentView(binding.getRoot());
 
         ApiClient.init(this);
+        showServerAddress();
 
         adapter = new WarehouseAdapter(this);
         binding.list.setAdapter(adapter);
@@ -224,7 +229,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         if (itemId > 0) {
-            toast("Позиция товара найдена (ID " + itemId + ")");
+            openItemEditor(itemId);
         } else {
             toast("Отсканирован тип товара — см. сведения в сканере");
         }
@@ -284,19 +289,72 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
+     * Корень склада: контейнеры верхнего уровня и позиции без контейнера.
+     * Вторые есть на сервере и в десктопе, в дереве коробок их нет.
+     */
+    private void showRoots() {
+        List<WarehouseAdapter.Row> rows = new ArrayList<>();
+        if (treeRoots != null) {
+            for (BoxNode node : treeRoots) {
+                rows.add(WarehouseAdapter.Row.ofBox(node));
+            }
+        }
+        adapter.setRows(rows);
+
+        final int generation = ++unboxedGeneration;
+        ApiClient.api().getUnboxedItems(true).enqueue(new Callback<List<ItemSummary>>() {
+            @Override
+            public void onResponse(Call<List<ItemSummary>> call,
+                                   Response<List<ItemSummary>> response) {
+                if (generation != unboxedGeneration || !path.isEmpty()) {
+                    return;
+                }
+                if (!response.isSuccessful() || response.body() == null) {
+                    toast("Ошибка загрузки товаров без контейнера: " + response.code());
+                    return;
+                }
+                List<WarehouseAdapter.Row> combined = new ArrayList<>();
+                if (treeRoots != null) {
+                    for (BoxNode node : treeRoots) {
+                        combined.add(WarehouseAdapter.Row.ofBox(node));
+                    }
+                }
+                for (ItemSummary summary : response.body()) {
+                    combined.add(WarehouseAdapter.Row.ofItem(toUnboxedRow(summary)));
+                }
+                adapter.setRows(combined);
+            }
+
+            @Override
+            public void onFailure(Call<List<ItemSummary>> call, Throwable t) {
+                if (generation != unboxedGeneration || !path.isEmpty()) {
+                    return;
+                }
+                toast("Сеть недоступна: " + t.getMessage());
+            }
+        });
+    }
+
+    private static BoxContents.ItemRow toUnboxedRow(ItemSummary summary) {
+        BoxContents.ItemRow row = new BoxContents.ItemRow();
+        row.item_id = summary.id;
+        row.item_type_id = summary.item_type_id;
+        row.item_type_name = summary.item_type_name;
+        row.weight_g = summary.weight_g;
+        row.quantity = summary.quantity;
+        row.total_weight_g = summary.total_weight_g;
+        row.box_name = "Без расположения";
+        return row;
+    }
+
+    /**
      * Верхний уровень: показываем корневые ячейки.
      */
     private void renderLevel() {
         updatePathLabel();
 
         if (path.isEmpty()) {
-            List<WarehouseAdapter.Row> rows = new ArrayList<>();
-            if (treeRoots != null) {
-                for (BoxNode node : treeRoots) {
-                    rows.add(WarehouseAdapter.Row.ofBox(node));
-                }
-            }
-            adapter.setRows(rows);
+            showRoots();
             return;
         }
 
@@ -343,13 +401,21 @@ public class MainActivity extends AppCompatActivity {
                 });
     }
 
-    private static BoxNode toNode(BoxContents.ChildBox child) {
+    private BoxNode toNode(BoxContents.ChildBox child) {
+        BoxNode known = findNode(treeRoots, child.id);
+        if (known != null) {
+            return known;
+        }
         BoxNode node = new BoxNode();
         node.id = child.id;
         node.name = child.name;
         node.box_type_id = child.box_type_id;
         node.box_type_name = child.box_type_name;
         return node;
+    }
+
+    private void showServerAddress() {
+        binding.tvServer.setText("Сервер: " + ServerConfig.getBaseUrl(this));
     }
 
     private void updatePathLabel() {
@@ -379,8 +445,10 @@ public class MainActivity extends AppCompatActivity {
 
         new AlertDialog.Builder(this)
                 .setTitle("Адрес сервера")
-                .setMessage("Например: http://192.168.1.50:8000\n"
-                        + "Для эмулятора Android хост-машина доступна по 10.0.2.2")
+                .setMessage("Общий сервер склада, без локальной базы.\n"
+                        + "В сети лаборатории: http://192.168.0.9:8000\n"
+                        + "Из другой сети (Tailscale): "
+                        + "http://warehouse-server.tail96180b.ts.net:8000")
                 .setView(input)
                 .setPositiveButton("Сохранить", (DialogInterface dialog, int which) -> {
                     String url = ServerConfig.normalize(input.getText().toString());
@@ -389,12 +457,13 @@ public class MainActivity extends AppCompatActivity {
                         return;
                     }
                     ServerConfig.setBaseUrl(this, url);
+                    showServerAddress();
                     toast("Сервер: " + url);
                     loadTree();
                 })
                 .setNeutralButton("Сбросить", (DialogInterface dialog, int which) -> {
                     ServerConfig.clearBaseUrl(this);
-                    ApiClient.init(this);
+                    showServerAddress();
                     toast("Использован адрес по умолчанию: "
                             + BuildConfig.API_BASE_URL);
                     loadTree();

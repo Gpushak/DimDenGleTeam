@@ -73,6 +73,20 @@ def test_box_tree_and_move_cycle(client):
     # Нельзя перенести коробку в собственного потомка.
     conflict = client.post(f"/boxes/{main['id']}/move", json={"parent_id": grand["id"]})
     assert conflict.status_code == 409
+    assert "descendant" in conflict.json()["detail"]
+
+    # Одинаковые имена на разных ветках допустимы, но не у одного родителя.
+    left = client.post(
+        "/boxes",
+        json={"name": "Полка", "box_type_id": types["Ячейка"], "parent_id": main["id"]},
+    ).json()
+    client.post(
+        "/boxes",
+        json={"name": "Полка", "box_type_id": types["Ячейка"], "parent_id": child["id"]},
+    )
+    clash = client.post(f"/boxes/{left['id']}/move", json={"parent_id": child["id"]})
+    assert clash.status_code == 409
+    assert "name already exists" in clash.json()["detail"]
 
     # Нельзя в саму себя.
     assert client.post(f"/boxes/{main['id']}/move", json={"parent_id": main["id"]}).status_code == 409
