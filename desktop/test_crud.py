@@ -11,11 +11,13 @@
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 # Модули десктопа (api_client, crud, models) лежат рядом с этим файлом
 # и импортируются как верхнеуровневые, поэтому добавляем папку в sys.path.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from api_client import ApiClient, ApiError  # noqa: E402
 from crud import NO_LOCATION, BoxIndex, search_items  # noqa: E402
 from database import normalize_base_url  # noqa: E402
 from models import Box, Item  # noqa: E402
@@ -211,6 +213,16 @@ class ServerUrlTest(unittest.TestCase):
     def test_rejects_empty(self):
         with self.assertRaises(ValueError):
             normalize_base_url("   ")
+
+
+class ApiClientErrorTest(unittest.TestCase):
+    def test_timeout_becomes_api_error(self):
+        client = ApiClient("http://192.168.0.9:8000")
+        with patch("api_client.urlopen", side_effect=TimeoutError("timed out")):
+            with self.assertRaises(ApiError) as ctx:
+                client.health()
+        self.assertIn("не отвечает", str(ctx.exception))
+        self.assertIn("192.168.0.9:8000", str(ctx.exception))
 
 
 if __name__ == "__main__":
