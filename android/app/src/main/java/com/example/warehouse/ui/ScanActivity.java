@@ -53,12 +53,12 @@ import retrofit2.Response;
  * сведений о товаре / типе товара / контейнере с сервера.
  *
  * Формат кодов — {@code qwentory:<kind>:<id>}. Распознанный код отправляется
- * в {@code GET /lookup?code=...}, результат показывается диалогом.
+ * в {@code GET /lookup?code=...}. Товар сразу возвращается в
+ * {@link MainActivity} для открытия экрана редактирования; тип и контейнер
+ * показываются диалогом.
  *
- * Активность возвращает результат вызывающей стороне через
- * {@link #setResult}: {@link #RESULT_ITEM_ID} и {@link #RESULT_BOX_ID}
- * (0, если не применимо), чтобы {@link MainActivity} мог перейти в контейнер,
- * где находится найденный товар.
+ * Активность возвращает результат через {@link #setResult}:
+ * {@link #RESULT_ITEM_ID} и {@link #RESULT_BOX_ID} (0, если не применимо).
  */
 public class ScanActivity extends AppCompatActivity {
 
@@ -234,6 +234,11 @@ public class ScanActivity extends AppCompatActivity {
 
         setStatus("Найдено: " + describe(result));
         releaseResult(result);
+
+        if ("item".equals(result.kind) && result.item != null) {
+            finish();
+            return;
+        }
 
         resultDialog = new AlertDialog.Builder(this)
                 .setTitle(titleFor(result))

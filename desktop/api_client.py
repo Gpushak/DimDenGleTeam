@@ -63,8 +63,20 @@ class ApiClient:
             except json.JSONDecodeError:
                 message = detail or str(error)
             raise ApiError(str(message), status=error.code, detail=detail) from error
+        except TimeoutError as error:
+            # Python 3.10+ (в т.ч. 3.14) отдаёт TimeoutError из urlopen напрямую,
+            # без обёртки URLError — иначе main.py падает, не показав диалог.
+            raise ApiError(
+                f"Сервер не отвечает ({self.base_url}): превышено время ожидания. "
+                "Запустите API: uvicorn app.main:app --app-dir server --port 8000"
+            ) from error
         except URLError as error:
             raise ApiError(
                 f"Сервер недоступен ({self.base_url}): {error.reason}. "
+                "Запустите API: uvicorn app.main:app --app-dir server --port 8000"
+            ) from error
+        except OSError as error:
+            raise ApiError(
+                f"Сервер недоступен ({self.base_url}): {error}. "
                 "Запустите API: uvicorn app.main:app --app-dir server --port 8000"
             ) from error
