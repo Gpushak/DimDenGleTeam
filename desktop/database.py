@@ -7,7 +7,7 @@
 import os
 from pathlib import Path
 
-#: Общий сервер проекта (LAN). Tailscale-имя — запасной адрес в окне «Сервер».
+#: Общий сервер проекта (LAN), если адрес ещё не сохранён и не задан API_BASE_URL.
 DEFAULT_API_BASE_URL = "http://192.168.0.9:8000"
 
 _SAVED_URL = Path(__file__).with_name("server_url.txt")
