@@ -491,9 +491,10 @@ class MainWindow:
 
     def _show_server_dialog(self):
         """Смена адреса общего сервера. Адрес проверяется запросом /health."""
+        from ui.dialogs import _fit_dialog
+
         dialog = ctk.CTkToplevel(self.root)
         dialog.title('Сервер')
-        dialog.geometry('480x220')
         dialog.transient(self.root)
         dialog.resizable(False, False)
         try:
@@ -506,20 +507,9 @@ class MainWindow:
         frame = ctk.CTkFrame(dialog, fg_color='transparent')
         frame.pack(fill='both', expand=True, padx=16, pady=14)
 
-        ctk.CTkLabel(
-            frame,
-            text='Склад хранится только на сервере. Локальной базы у приложения нет.',
-            wraplength=440, justify='left', text_color=pal.text,
-        ).pack(anchor='w')
         entry = ctk.CTkEntry(frame, width=440, border_width=0)
-        entry.pack(fill='x', pady=(10, 4))
+        entry.pack(fill='x', pady=(0, 12))
         entry.insert(0, self.client.base_url)
-        ctk.CTkLabel(
-            frame,
-            text='Сейчас в сети: 192.168.0.9:8000, из другой сети — '
-                 'warehouse-server.tail96180b.ts.net:8000',
-            wraplength=440, justify='left', text_color=pal.muted_text,
-        ).pack(anchor='w', pady=(0, 12))
 
         def save():
             try:
@@ -551,6 +541,8 @@ class MainWindow:
         ctk.CTkButton(buttons, text='Отмена', width=100, border_width=0,
                       fg_color='transparent', hover_color=pal.hover, text_color=pal.text,
                       command=dialog.destroy).pack(side='left')
+
+        _fit_dialog(dialog, self.root, 480)
 
     # ============================================================== содержимое
     def _create_widgets(self):
