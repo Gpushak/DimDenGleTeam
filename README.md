@@ -41,6 +41,9 @@ docker compose up --build # REST API доступен на http://localhost:8000
 Десктопное приложение (`desktop/`) в Docker **не запускается** — это GUI, которому
 нужна графическая сессия хоста. Запускается нативно (см. `desktop/README.md`).
 
+Веб-клиент (`web/`) повторяет функции десктопа в браузере (Vue, TypeScript, Pinia).
+В Docker не входит, запускается через `npm run dev` (см. `web/README.md`).
+
 Запуск опциональных сервисов — через profiles, например:
 
 ```bash

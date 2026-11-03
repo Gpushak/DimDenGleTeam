@@ -1,0 +1,91 @@
+// Палитра повторяет desktop/ui/theme.py: светлая и тёмная темы.
+:root[data-theme='light'] {
+  color-scheme: light;
+  --window-bg: #e6e9ee;
+  --panel-bg: #ffffff;
+  --header-bg: #d5dbe3;
+  --text: #121417;
+  --muted: #3e4651;
+  --border: #b7bec8;
+  --selected: #165a96;
+  --selected-text: #ffffff;
+  --row-alt: #f2f4f7;
+  --hover: #d5dbe3;
+  --button-bg: #165a96;
+  --button-hover: #0f4474;
+  --button-text: #ffffff;
+  --field-bg: #ffffff;
+  --field-border: #3e4651;
+  --field-text: #121417;
+  --segment-bg: #4a5562;
+  --overlay: rgba(18, 20, 23, 0.45);
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --window-bg: #1a1b1e;
+  --panel-bg: #242526;
+  --header-bg: #3a3d40;
+  --text: #e6e6e6;
+  --muted: #9aa0a6;
+  --border: #4a4d50;
+  --selected: #1f538d;
+  --selected-text: #ffffff;
+  --row-alt: #2c2d30;
+  --hover: #3a3d41;
+  --button-bg: #1f6aa5;
+  --button-hover: #144870;
+  --button-text: #ffffff;
+  --field-bg: #343638;
+  --field-border: #8b949e;
+  --field-text: #dce4ee;
+  --segment-bg: #4a4d50;
+  --overlay: rgba(0, 0, 0, 0.55);
+}
+
+@mixin button-base {
+  border: 0;
+  border-radius: 8px;
+  height: 30px;
+  padding: 0 12px;
+  cursor: pointer;
+  font: inherit;
+  line-height: 30px;
+  white-space: nowrap;
+
+  &:disabled {
+    opacity: 0.55;
+    cursor: default;
+  }
+}
+
+@mixin primary-button {
+  @include button-base;
+  background: var(--button-bg);
+  color: var(--button-text);
+
+  &:hover:not(:disabled) {
+    background: var(--button-hover);
+  }
+}
+
+@mixin ghost-button {
+  @include button-base;
+  background: transparent;
+  color: var(--text);
+
+  &:hover:not(:disabled) {
+    background: var(--hover);
+  }
+}
+
+@mixin text-field {
+  height: 34px;
+  width: 100%;
+  padding: 0 10px;
+  border: 2px solid var(--field-border);
+  border-radius: 8px;
+  background: var(--field-bg);
+  color: var(--field-text);
+  font: inherit;
+}

@@ -1,0 +1,139 @@
+@use 'theme' as *;
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 13px;
+  background: var(--window-bg);
+  color: var(--text);
+}
+
+button,
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--selected);
+  outline-offset: 1px;
+}
+
+.btn {
+  @include primary-button;
+}
+
+.btn.ghost {
+  @include ghost-button;
+}
+
+.field {
+  @include text-field;
+}
+
+select.field {
+  cursor: pointer;
+}
+
+.app-shell {
+  height: 100%;
+  min-width: 900px;
+  display: flex;
+  flex-direction: column;
+  background: var(--window-bg);
+  color: var(--text);
+}
+
+.sep {
+  height: 1px;
+  background: var(--border);
+  flex: none;
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--overlay);
+}
+
+.dialog-card {
+  width: min(640px, 100%);
+  padding: 16px 16px 14px;
+  border-radius: 12px;
+  background: var(--panel-bg);
+  color: var(--text);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
+}
+
+.dialog-card h2 {
+  margin: 0 0 14px;
+  font-size: 16px;
+}
+
+.dialog-card p {
+  margin: 0;
+  white-space: pre-line;
+  line-height: 1.45;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 10px 24px;
+  align-items: center;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.notice-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--overlay);
+}
+
+.notice-card {
+  width: min(440px, 100%);
+  padding: 18px 18px 14px;
+  border-radius: 12px;
+  background: var(--panel-bg);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
+}
+
+.notice-card h2 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+
+.notice-card p {
+  margin: 0;
+  white-space: pre-line;
+  line-height: 1.45;
+}
