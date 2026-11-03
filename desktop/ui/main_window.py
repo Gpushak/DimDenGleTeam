@@ -69,8 +69,7 @@ class TreeWidget(DarkScrollableFrame):
         self.selected_box_id: Optional[int] = None
         self.on_select_callback = None
 
-        self.winfo_toplevel().bind('<<ThemeChanged>>',
-                                   lambda _e=None: self._on_theme_change(), add='+')
+        self.winfo_toplevel().bind('<<ThemeChanged>>', self._on_theme_event, add='+')
 
     # ------------------------------------------------------------------ цвета
     @staticmethod
@@ -92,6 +91,13 @@ class TreeWidget(DarkScrollableFrame):
     def _selected_colors() -> tuple:
         pal = theme.palette()
         return ((pal.selected, pal.selected), (pal.selected_text, pal.selected_text))
+
+    def _on_theme_event(self, event=None):
+        # ttk рассылает <<ThemeChanged>> каждому виджету, а привязка на окне
+        # срабатывает для всех из-за bindtags. Красим дерево один раз.
+        if event is not None and event.widget is not self.winfo_toplevel():
+            return
+        self._on_theme_change()
 
     def _on_theme_change(self):
         for node in self.nodes.values():
@@ -360,8 +366,7 @@ class MainWindow:
         self.root.geometry('1200x700')
         self.root.minsize(900, 560)
 
-        # Тема: применяем сохранённый режим (simplecache customtkinter)
-        ctk.set_default_color_theme('blue')
+        # Тема: палитра приложения и сохранённый режим (simplecache customtkinter).
         theme.apply_theme(theme.current_mode())
 
         # Данные последней выборки и состояние сортировки таблицы
@@ -505,7 +510,7 @@ class MainWindow:
         frame = ctk.CTkFrame(dialog, fg_color='transparent')
         frame.pack(fill='both', expand=True, padx=16, pady=14)
 
-        entry = ctk.CTkEntry(frame, width=440, border_width=0)
+        entry = ctk.CTkEntry(frame, width=440)
         entry.pack(fill='x', pady=(0, 12))
         entry.insert(0, self.client.base_url)
 
@@ -562,8 +567,7 @@ class MainWindow:
         self.search_var = ctk.StringVar()
         self.search_var.trace_add('write', lambda *_: self._on_search())
         search_entry = ctk.CTkEntry(search_frame, textvariable=self.search_var,
-                                    width=300, border_width=0, corner_radius=8,
-                                    height=34)
+                                    width=300, corner_radius=8, height=34)
         search_entry.pack(side='left')
 
         # Основная область: две панели без рамок, разделены тонкой линией
@@ -872,7 +876,7 @@ class MainWindow:
         if self.scale_monitor and self.scale_monitor.last_weight is not None:
             scale = f' | Весы: {self.scale_monitor.last_weight:.1f} г'
         self.status_var.set(
-            f'Сервер: {self.client.base_url} | Позиций: {len(items)} | '
+            f'Позиций: {len(items)} | '
             f'Общее кол-во: {total_qty} | Общий вес: {format_weight(total_weight)}{scale}'
         )
 

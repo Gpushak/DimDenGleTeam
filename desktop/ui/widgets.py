@@ -12,6 +12,7 @@
 но цвета берутся из текущей темы (``ui.theme``), а не зашиты как тёмные.
 """
 import tkinter as tk
+import tkinter.font as tkfont
 import tkinter.ttk as ttk
 
 import customtkinter as ctk
@@ -140,7 +141,7 @@ class DarkTableFrame(ctk.CTkFrame):
 
         # Перекраска при переключении темы.
         toplevel = self.winfo_toplevel()
-        toplevel.bind('<<ThemeChanged>>', lambda _e=None: self._on_theme_change(), add='+')
+        toplevel.bind('<<ThemeChanged>>', self._on_theme_event, add='+')
 
     # ------------------------------------------------------------- mousewheel
     @staticmethod
@@ -161,6 +162,12 @@ class DarkTableFrame(ctk.CTkFrame):
         widget.bind('<Button-5>', _on_mousewheel)
 
     # ------------------------------------------------------------------ theme
+    def _on_theme_event(self, event=None):
+        # См. BoxTree: событие приходит на каждый виджет, обрабатываем его на корне.
+        if event is not None and event.widget is not self.winfo_toplevel():
+            return
+        self._on_theme_change()
+
     def _on_theme_change(self):
         pal = theme.palette()
         self.configure(fg_color=pal.panel_bg)
@@ -269,6 +276,27 @@ class FormComboBox(ctk.CTkComboBox):
             self._entry.bind('<Button-1>', self._on_entry_click, add='+')
         tk.Misc.bind(self, '<Destroy>', self._on_destroy, add='+')
 
+    def _paint_button_border(self):
+        """Рамка кнопки списка — тем же цветом, что рамка поля.
+
+        customtkinter красит правый контур цветом кнопки. Когда кнопка
+        совпадает с заливкой поля, у неё пропадает обводка.
+        """
+        color = self._apply_appearance_mode(self._border_color)
+        self._canvas.itemconfig('border_parts_right', outline=color, fill=color)
+
+    def _draw(self, no_color_updates=False):
+        super()._draw(no_color_updates=no_color_updates)
+        self._paint_button_border()
+
+    def _on_enter(self, event=0):
+        super()._on_enter(event)
+        self._paint_button_border()
+
+    def _on_leave(self, event=0):
+        super()._on_leave(event)
+        self._paint_button_border()
+
     def _on_entry_click(self, event):
         self._clicked(event)
         return 'break'
@@ -308,9 +336,9 @@ class FormComboBox(ctk.CTkComboBox):
             return
 
         self.update_idletasks()
-        width = self.winfo_width()
-        if width <= 1:
-            width = max(self.winfo_reqwidth(), 1)
+        combo_width = self.winfo_width()
+        if combo_width <= 1:
+            combo_width = max(self.winfo_reqwidth(), 1)
 
         pal = theme.palette()
         popup = tk.Toplevel(self)
@@ -327,9 +355,14 @@ class FormComboBox(ctk.CTkComboBox):
         except tk.TclError:
             list_font = ('Segoe UI', 13)
 
-        # width=1 — запрошенная ширина списка минимальна, фактическую
-        # задаёт оболочка ровно по ширине поля. Длинный текст обрезается,
-        # а не раздвигает окно.
+        # Список не уже поля. Если путь длиннее поля, окно раскрывается
+        # по самой длинной строке, чтобы надпись была видна целиком.
+        font_obj = tkfont.Font(root=popup, font=list_font)
+        text_px = max((font_obj.measure(str(value)) for value in values), default=0)
+        width = max(combo_width, text_px + 32)
+        screen_w = max(self.winfo_vrootwidth(), combo_width)
+        width = min(width, max(screen_w - 16, combo_width))
+
         shell = tk.Frame(
             popup,
             width=width,
@@ -423,13 +456,6 @@ class FormComboBox(ctk.CTkComboBox):
                 listbox.yview_scroll(1, 'units')
             return 'break'
 
-        # Горизонтальная прокрутка сдвинула бы текст и визуально
-        # изменила ширину содержимого — держим его у левого края.
-        def _keep_x_origin(*_args):
-            if listbox.xview()[0] > 0:
-                listbox.xview_moveto(0)
-
-        listbox.configure(xscrollcommand=_keep_x_origin)
         listbox.bind('<ButtonRelease-1>', pick_at)
         listbox.bind('<Return>', pick_active)
         listbox.bind('<Escape>', lambda _e: self._close_form_popup())
@@ -437,6 +463,14 @@ class FormComboBox(ctk.CTkComboBox):
         listbox.bind('<Button-4>', on_wheel)
         listbox.bind('<Button-5>', on_wheel)
         popup.bind('<Escape>', lambda _e: self._close_form_popup())
+
+        def on_horizontal(event):
+            if getattr(event, 'delta', 0):
+                listbox.xview_scroll(-1 if event.delta > 0 else 1, 'units')
+            return 'break'
+
+        # Если строка всё же шире экрана, её можно дочитать с Shift.
+        listbox.bind('<Shift-MouseWheel>', on_horizontal)
         self._form_popup = popup
 
     def _close_form_popup(self):

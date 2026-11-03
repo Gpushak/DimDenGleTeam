@@ -80,6 +80,7 @@ def _place_dialog(dialog, parent, width: int, height: int):
     x = origin_x + max((screen_w - pixel_w) // 2, 0)
     y = origin_y + max((screen_h - pixel_h) // 2, 0)
     dialog.geometry(f'{width}x{height}+{x}+{y}')
+    theme.paint_titlebar(dialog)
 
 
 def _center_dialog(dialog: ctk.CTkToplevel, parent, width: int, height: int | None = None):
@@ -93,8 +94,7 @@ def _center_dialog(dialog: ctk.CTkToplevel, parent, width: int, height: int | No
     if height is None:
         height = max(dialog.winfo_reqheight(), 1)
     _place_dialog(dialog, parent, width, height)
-    # На Windows смена цвета заголовка на мгновение прячет окно,
-    # и позиция иногда сбрасывается — ставим центр ещё раз.
+    # Windows иногда сбрасывает позицию, когда окно впервые показывается.
     dialog.after(80, lambda w=width, h=height: _place_dialog(dialog, parent, w, h))
 
 
@@ -109,7 +109,7 @@ def _form(dialog: ctk.CTkToplevel) -> ctk.CTkFrame:
     """Каркас диалога: подпись слева, поле занимает всю оставшуюся ширину."""
     pal = theme.palette()
     dialog.configure(fg_color=pal.window_bg)
-    frame = ctk.CTkFrame(dialog, fg_color='transparent', border_width=0)
+    frame = ctk.CTkFrame(dialog, fg_color='transparent')
     frame.pack(fill='both', expand=True, padx=16, pady=14)
     frame.grid_columnconfigure(1, weight=1)
     return frame
@@ -151,7 +151,7 @@ class BoxDialog:
         # Родитель
         _form_label(frame, 0, 'Родительский контейнер:')
         self.parent_var = ctk.StringVar()
-        parent_combo = FormComboBox(frame, variable=self.parent_var, state='readonly', border_width=0)
+        parent_combo = FormComboBox(frame, variable=self.parent_var, state='readonly')
         _form_value(parent_combo, 0)
 
         ROOT_LABEL = '— Корень —'
@@ -184,14 +184,14 @@ class BoxDialog:
         self.name_var = ctk.StringVar()
         if self.mode == 'edit' and self.box:
             self.name_var.set(self.box.box_name)
-        name_entry = ctk.CTkEntry(frame, textvariable=self.name_var, border_width=0)
+        name_entry = ctk.CTkEntry(frame, textvariable=self.name_var)
         _form_value(name_entry, 1)
         name_entry.focus()
 
         # Тип
         _form_label(frame, 2, 'Тип контейнера:')
         self.type_var = ctk.StringVar()
-        type_combo = FormComboBox(frame, variable=self.type_var, state='readonly', border_width=0)
+        type_combo = FormComboBox(frame, variable=self.type_var, state='readonly')
         _form_value(type_combo, 2)
 
         box_types = crud.get_all_box_types(self.client)
@@ -290,7 +290,7 @@ class ItemTypeDialog:
         self.name_var = ctk.StringVar()
         if self.mode == 'edit' and self.item_type:
             self.name_var.set(self.item_type.item_type_name)
-        name_entry = ctk.CTkEntry(frame, textvariable=self.name_var, border_width=0)
+        name_entry = ctk.CTkEntry(frame, textvariable=self.name_var)
         _form_value(name_entry, 0)
         name_entry.focus()
 
@@ -303,7 +303,7 @@ class ItemTypeDialog:
             self._set_weight_field(self.item_type.weight_g)
         weight_cell = ctk.CTkFrame(frame, fg_color='transparent')
         _form_value(weight_cell, 1)
-        weight_entry = ctk.CTkEntry(weight_cell, textvariable=self.weight_var, border_width=0)
+        weight_entry = ctk.CTkEntry(weight_cell, textvariable=self.weight_var)
         weight_entry.pack(side='left', fill='x', expand=True)
         ctk.CTkButton(weight_cell, text='С весов', width=80,
                       command=self._on_fetch_weight).pack(side='left', padx=(8, 0))
@@ -433,7 +433,7 @@ class ItemDialog:
         # Тип товара
         _form_label(frame, 0, 'Тип товара:')
         self.type_var = ctk.StringVar()
-        type_combo = FormComboBox(frame, variable=self.type_var, state='readonly', border_width=0)
+        type_combo = FormComboBox(frame, variable=self.type_var, state='readonly')
         _form_value(type_combo, 0)
 
         def label_for(item_type: ItemType) -> str:
@@ -453,7 +453,7 @@ class ItemDialog:
         # Контейнер
         _form_label(frame, 1, 'Расположение:')
         self.box_var = ctk.StringVar()
-        box_combo = FormComboBox(frame, variable=self.box_var, state='readonly', border_width=0)
+        box_combo = FormComboBox(frame, variable=self.box_var, state='readonly')
         _form_value(box_combo, 1)
 
         NO_BOX_LABEL = 'Без расположения'
@@ -483,7 +483,7 @@ class ItemDialog:
             self.qty_var.set(str(self.item.quantity))
         else:
             self.qty_var.set('1')
-        qty_entry = ctk.CTkEntry(frame, textvariable=self.qty_var, border_width=0)
+        qty_entry = ctk.CTkEntry(frame, textvariable=self.qty_var)
         _form_value(qty_entry, 2)
 
         # Кнопки
