@@ -484,11 +484,8 @@ class MainWindow:
         ctk.CTkButton(frame, text='Закрыть', width=120, border_width=0,
                       command=dialog.destroy).pack(pady=(0, 18))
 
-        # Диалог поверх родителя, по центру окна
-        dialog.update_idletasks()
-        x = self.root.winfo_rootx() + (self.root.winfo_width() - 420) // 2
-        y = self.root.winfo_rooty() + (self.root.winfo_height() - 300) // 2
-        dialog.geometry(f'+{max(x, 0)}+{max(y, 0)}')
+        from ui.dialogs import _center_dialog
+        _center_dialog(dialog, self.root, 420, 340)
 
     def _show_server_dialog(self):
         """Смена адреса общего сервера. Адрес проверяется запросом /health."""
@@ -734,6 +731,9 @@ class MainWindow:
         dialog._qr_image = photo
         ctk.CTkButton(dialog, text='Закрыть', border_width=0,
                       command=dialog.destroy).pack(pady=8)
+
+        from ui.dialogs import _center_dialog
+        _center_dialog(dialog, self.root, 360, 420)
 
     def _refresh_tree(self):
         selected = self.selected_box_id

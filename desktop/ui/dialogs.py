@@ -1,4 +1,5 @@
 """Модальные диалоги для CRUD операций на customtkinter."""
+import sys
 import tkinter
 
 import customtkinter as ctk
@@ -9,27 +10,118 @@ from api_client import ApiClient
 import crud
 from models import Box, ItemType, Item
 from ui import theme
+from ui.widgets import FormComboBox
+
+#: Зазор между подписью параметра и полем с его значением
+#: (в единицах customtkinter, до DPI-масштаба).
+_FIELD_GAP = 24
 
 
-def _center_dialog(dialog: ctk.CTkToplevel, parent, width: int):
-    """Разместить диалог по центру родительского окна.
+def _monitor_bounds(widget) -> tuple[int, int, int, int]:
+    """Прямоугольник экрана, на котором находится окно: x, y, ширина, высота."""
+    if sys.platform.startswith('win'):
+        try:
+            return _win_monitor_bounds(widget)
+        except (OSError, AttributeError, ValueError, tkinter.TclError):
+            pass
+    return 0, 0, widget.winfo_screenwidth(), widget.winfo_screenheight()
+
+
+def _win_monitor_bounds(widget) -> tuple[int, int, int, int]:
+    import ctypes
+    from ctypes import wintypes
+
+    class RECT(ctypes.Structure):
+        _fields_ = [
+            ('left', wintypes.LONG),
+            ('top', wintypes.LONG),
+            ('right', wintypes.LONG),
+            ('bottom', wintypes.LONG),
+        ]
+
+    class MONITORINFO(ctypes.Structure):
+        _fields_ = [
+            ('cbSize', wintypes.DWORD),
+            ('rcMonitor', RECT),
+            ('rcWork', RECT),
+            ('dwFlags', wintypes.DWORD),
+        ]
+
+    user32 = ctypes.windll.user32
+    hwnd = user32.GetParent(widget.winfo_id()) or widget.winfo_id()
+    monitor = user32.MonitorFromWindow(hwnd, 2)  # MONITOR_DEFAULTTONEAREST
+    info = MONITORINFO()
+    info.cbSize = ctypes.sizeof(MONITORINFO)
+    if not user32.GetMonitorInfoW(monitor, ctypes.byref(info)):
+        raise OSError('GetMonitorInfoW failed')
+    rect = info.rcMonitor
+    return rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top
+
+
+def _place_dialog(dialog, parent, width: int, height: int):
+    """Поставить диалог по центру экрана. Безопасно вызывать повторно."""
+    try:
+        if not dialog.winfo_exists():
+            return
+    except tkinter.TclError:
+        return
+    anchor = parent if parent is not None else dialog
+    try:
+        if anchor is None or not anchor.winfo_exists():
+            anchor = dialog
+    except tkinter.TclError:
+        anchor = dialog
+    # geometry() масштабирует только ширину и высоту; x/y остаются
+    # экранными пикселями. Центр считаем уже в пикселях.
+    scaling = dialog._get_window_scaling()
+    pixel_w = max(round(width * scaling), 1)
+    pixel_h = max(round(height * scaling), 1)
+    origin_x, origin_y, screen_w, screen_h = _monitor_bounds(anchor)
+    x = origin_x + max((screen_w - pixel_w) // 2, 0)
+    y = origin_y + max((screen_h - pixel_h) // 2, 0)
+    dialog.geometry(f'{width}x{height}+{x}+{y}')
+
+
+def _center_dialog(dialog: ctk.CTkToplevel, parent, width: int, height: int | None = None):
+    """Разместить диалог по центру экрана.
 
     Ширина задаётся явно (с запасом под содержимое), а высота берётся
     равной естественному размеру — иначе под кнопками «Сохранить/Отмена»
     оставалась пустая область от фиксированного geometry().
     """
     dialog.update_idletasks()
-    height = max(dialog.winfo_reqheight(), 1)
-    x = parent.winfo_rootx() + (parent.winfo_width() - width) // 2
-    y = parent.winfo_rooty() + (parent.winfo_height() - height) // 2
-    dialog.geometry(f'{width}x{height}+{max(x, 0)}+{max(y, 0)}')
+    if height is None:
+        height = max(dialog.winfo_reqheight(), 1)
+    _place_dialog(dialog, parent, width, height)
+    # На Windows смена цвета заголовка на мгновение прячет окно,
+    # и позиция иногда сбрасывается — ставим центр ещё раз.
+    dialog.after(80, lambda w=width, h=height: _place_dialog(dialog, parent, w, h))
 
 
 def _fit_dialog(dialog: ctk.CTkToplevel, parent, min_width: int):
-    """Вызвать после создания виджетов: подогнать размер под содержимое."""
+    """Вызвать после создания виджетов: подогнать размер и поставить по центру экрана."""
     dialog.update_idletasks()
     width = max(dialog.winfo_reqwidth(), min_width)
     _center_dialog(dialog, parent, width)
+
+
+def _form(dialog: ctk.CTkToplevel) -> ctk.CTkFrame:
+    """Каркас диалога: подпись слева, поле занимает всю оставшуюся ширину."""
+    pal = theme.palette()
+    dialog.configure(fg_color=pal.window_bg)
+    frame = ctk.CTkFrame(dialog, fg_color='transparent', border_width=0)
+    frame.pack(fill='both', expand=True, padx=16, pady=14)
+    frame.grid_columnconfigure(1, weight=1)
+    return frame
+
+
+def _form_label(frame, row: int, text: str):
+    ctk.CTkLabel(frame, text=text).grid(row=row, column=0, sticky='w', pady=5)
+
+
+def _form_value(widget, row: int):
+    """Поставить поле значения в правую колонку, на всю свободную ширину."""
+    widget.grid(row=row, column=1, sticky='ew', padx=(_FIELD_GAP, 0), pady=5)
 
 
 class BoxDialog:
@@ -51,19 +143,16 @@ class BoxDialog:
         self.dialog.wait_window()
 
     def _create_widgets(self, default_parent_id: Optional[int]):
-        pal = theme.palette()
-        self.dialog.configure(fg_color=pal.window_bg)
-        frame = ctk.CTkFrame(self.dialog, fg_color='transparent', border_width=0)
-        frame.pack(fill='both', expand=True, padx=16, pady=14)
+        frame = _form(self.dialog)
 
         # Контейнеры грузим один раз: из них считаются и пути, и исключения.
         boxes = crud.BoxIndex.load(self.client)
 
         # Родитель
-        ctk.CTkLabel(frame, text='Родительский контейнер:').grid(row=0, column=0, sticky='w', pady=5)
+        _form_label(frame, 0, 'Родительский контейнер:')
         self.parent_var = ctk.StringVar()
-        parent_combo = ctk.CTkComboBox(frame, variable=self.parent_var, state='readonly', width=250, border_width=0)
-        parent_combo.grid(row=0, column=1, pady=5)
+        parent_combo = FormComboBox(frame, variable=self.parent_var, state='readonly', border_width=0)
+        _form_value(parent_combo, 0)
 
         ROOT_LABEL = '— Корень —'
         candidates = boxes.all()
@@ -91,19 +180,19 @@ class BoxDialog:
             self.parent_var.set(ROOT_LABEL)
 
         # Название
-        ctk.CTkLabel(frame, text='Название:').grid(row=1, column=0, sticky='w', pady=5)
+        _form_label(frame, 1, 'Название:')
         self.name_var = ctk.StringVar()
         if self.mode == 'edit' and self.box:
             self.name_var.set(self.box.box_name)
-        name_entry = ctk.CTkEntry(frame, textvariable=self.name_var, width=250, border_width=0)
-        name_entry.grid(row=1, column=1, pady=5)
+        name_entry = ctk.CTkEntry(frame, textvariable=self.name_var, border_width=0)
+        _form_value(name_entry, 1)
         name_entry.focus()
 
         # Тип
-        ctk.CTkLabel(frame, text='Тип контейнера:').grid(row=2, column=0, sticky='w', pady=5)
+        _form_label(frame, 2, 'Тип контейнера:')
         self.type_var = ctk.StringVar()
-        type_combo = ctk.CTkComboBox(frame, variable=self.type_var, state='readonly', width=250, border_width=0)
-        type_combo.grid(row=2, column=1, pady=5)
+        type_combo = FormComboBox(frame, variable=self.type_var, state='readonly', border_width=0)
+        _form_value(type_combo, 2)
 
         box_types = crud.get_all_box_types(self.client)
         type_values = [bt.box_type_name for bt in box_types]
@@ -194,33 +283,30 @@ class ItemTypeDialog:
         self.dialog.wait_window()
 
     def _create_widgets(self):
-        pal = theme.palette()
-        self.dialog.configure(fg_color=pal.window_bg)
-        frame = ctk.CTkFrame(self.dialog, fg_color='transparent', border_width=0)
-        frame.pack(fill='both', expand=True, padx=16, pady=14)
+        frame = _form(self.dialog)
 
         # Название
-        ctk.CTkLabel(frame, text='Название типа:').grid(row=0, column=0, sticky='w', pady=5)
+        _form_label(frame, 0, 'Название типа:')
         self.name_var = ctk.StringVar()
         if self.mode == 'edit' and self.item_type:
             self.name_var.set(self.item_type.item_type_name)
-        name_entry = ctk.CTkEntry(frame, textvariable=self.name_var, width=250, border_width=0)
-        name_entry.grid(row=0, column=1, pady=5)
+        name_entry = ctk.CTkEntry(frame, textvariable=self.name_var, border_width=0)
+        _form_value(name_entry, 0)
         name_entry.focus()
 
         # Вес: при создании типа заполняется автоматически с
         # весового модуля (эмулятор из firmware/weight_module)
-        ctk.CTkLabel(frame, text='Вес (г):').grid(row=1, column=0, sticky='w', pady=5)
+        _form_label(frame, 1, 'Вес (г):')
         self.weight_var = ctk.StringVar()
         self.weight_var.trace_add('write', self._on_weight_changed)
         if self.mode == 'edit' and self.item_type and self.item_type.weight_g is not None:
             self._set_weight_field(self.item_type.weight_g)
         weight_cell = ctk.CTkFrame(frame, fg_color='transparent')
-        weight_cell.grid(row=1, column=1, pady=5, sticky='w')
-        weight_entry = ctk.CTkEntry(weight_cell, textvariable=self.weight_var, width=160, border_width=0)
-        weight_entry.pack(side='left')
+        _form_value(weight_cell, 1)
+        weight_entry = ctk.CTkEntry(weight_cell, textvariable=self.weight_var, border_width=0)
+        weight_entry.pack(side='left', fill='x', expand=True)
         ctk.CTkButton(weight_cell, text='С весов', width=80,
-                      command=self._on_fetch_weight).pack(side='left', padx=(5, 0))
+                      command=self._on_fetch_weight).pack(side='left', padx=(8, 0))
 
         # Автозаполнение веса с весового модуля — только при создании
         if self.mode == 'add':
@@ -342,16 +428,13 @@ class ItemDialog:
         self.dialog.wait_window()
 
     def _create_widgets(self, default_box_id: Optional[int]):
-        pal = theme.palette()
-        self.dialog.configure(fg_color=pal.window_bg)
-        frame = ctk.CTkFrame(self.dialog, fg_color='transparent', border_width=0)
-        frame.pack(fill='both', expand=True, padx=16, pady=14)
+        frame = _form(self.dialog)
 
         # Тип товара
-        ctk.CTkLabel(frame, text='Тип товара:').grid(row=0, column=0, sticky='w', pady=5)
+        _form_label(frame, 0, 'Тип товара:')
         self.type_var = ctk.StringVar()
-        type_combo = ctk.CTkComboBox(frame, variable=self.type_var, state='readonly', width=280, border_width=0)
-        type_combo.grid(row=0, column=1, pady=5)
+        type_combo = FormComboBox(frame, variable=self.type_var, state='readonly', border_width=0)
+        _form_value(type_combo, 0)
 
         def label_for(item_type: ItemType) -> str:
             return f'{item_type.item_type_name} ({item_type.weight_g}г)' if item_type.weight_g \
@@ -368,10 +451,10 @@ class ItemDialog:
             self.type_var.set(label_for(item_types[0]))
 
         # Контейнер
-        ctk.CTkLabel(frame, text='Расположение:').grid(row=1, column=0, sticky='w', pady=5)
+        _form_label(frame, 1, 'Расположение:')
         self.box_var = ctk.StringVar()
-        box_combo = ctk.CTkComboBox(frame, variable=self.box_var, state='readonly', width=280, border_width=0)
-        box_combo.grid(row=1, column=1, pady=5)
+        box_combo = FormComboBox(frame, variable=self.box_var, state='readonly', border_width=0)
+        _form_value(box_combo, 1)
 
         NO_BOX_LABEL = 'Без расположения'
         boxes = crud.BoxIndex.load(self.client)
@@ -394,14 +477,14 @@ class ItemDialog:
             self.box_var.set(NO_BOX_LABEL)
 
         # Количество
-        ctk.CTkLabel(frame, text='Количество:').grid(row=2, column=0, sticky='w', pady=5)
+        _form_label(frame, 2, 'Количество:')
         self.qty_var = ctk.StringVar()
         if self.mode == 'edit' and self.item:
             self.qty_var.set(str(self.item.quantity))
         else:
             self.qty_var.set('1')
-        qty_entry = ctk.CTkEntry(frame, textvariable=self.qty_var, width=280, border_width=0)
-        qty_entry.grid(row=2, column=1, pady=5)
+        qty_entry = ctk.CTkEntry(frame, textvariable=self.qty_var, border_width=0)
+        _form_value(qty_entry, 2)
 
         # Кнопки
         btn_frame = ctk.CTkFrame(frame, fg_color='transparent')
