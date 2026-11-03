@@ -368,6 +368,7 @@ class MainWindow:
         self._current_rows: List[tuple] = []   # (item_id, values tuple)
         self._sort_column: Optional[str] = None
         self._sort_reverse: bool = False
+        self._suppress_search = False
 
         self._create_widgets()
         self._refresh_all()
@@ -688,6 +689,16 @@ class MainWindow:
             self.status_var.set(f'Ошибка обновления: {error}')
 
     def _refresh_all(self):
+        """Перечитывает дерево и таблицу с сервера без фильтра поиска.
+
+        Список контейнера — только его прямые товары, как на телефоне после
+        «Обновить».
+        """
+        self._suppress_search = True
+        try:
+            self.search_var.set('')
+        finally:
+            self._suppress_search = False
         try:
             self._refresh_tree()
             self._refresh_items()
@@ -835,7 +846,7 @@ class MainWindow:
             return []
 
         self.items_header.configure(text=f'{box.box_name} — {box.full_path}')
-        return crud.get_items_by_box(self.client, self.selected_box_id, include_children=True)
+        return crud.get_items_by_box(self.client, self.selected_box_id, include_children=False)
 
     def _refresh_items(self):
         # Контейнеры загружаются один раз на перерисовку: без этого
@@ -898,6 +909,8 @@ class MainWindow:
         self._refresh_items()
 
     def _on_search(self):
+        if self._suppress_search:
+            return
         self._refresh_items()
 
     # ===== Box CRUD =====

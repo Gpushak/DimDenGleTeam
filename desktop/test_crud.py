@@ -8,6 +8,7 @@
 Для тестов нужен только стандартный библиотечный unittest — mock-объект
 подменяет сетевой клиент, поэтому API поднимать не нужно.
 """
+import os
 import sys
 import unittest
 from pathlib import Path
@@ -19,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from api_client import ApiClient, ApiError  # noqa: E402
 from crud import NO_LOCATION, BoxIndex, search_items  # noqa: E402
-from database import normalize_base_url  # noqa: E402
+from database import api_base_url, normalize_base_url  # noqa: E402
 from models import Box, Item  # noqa: E402
 
 
@@ -213,6 +214,21 @@ class ServerUrlTest(unittest.TestCase):
     def test_rejects_empty(self):
         with self.assertRaises(ValueError):
             normalize_base_url("   ")
+
+    def test_rejects_loopback(self):
+        for raw in ("http://127.0.0.1:8000", "localhost:8000", "http://[::1]:8000"):
+            with self.assertRaises(ValueError):
+                normalize_base_url(raw)
+
+    def test_loopback_env_falls_back_to_shared_server(self):
+        with patch("database._SAVED_URL") as saved, patch.dict(
+            os.environ, {"API_BASE_URL": "http://127.0.0.1:8000"},
+        ):
+            saved.is_file.return_value = False
+            self.assertEqual(
+                api_base_url(),
+                "http://warehouse-server.tail96180b.ts.net:8000",
+            )
 
 
 class ApiClientErrorTest(unittest.TestCase):

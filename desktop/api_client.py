@@ -68,15 +68,15 @@ class ApiClient:
             # без обёртки URLError — иначе main.py падает, не показав диалог.
             raise ApiError(
                 f"Сервер не отвечает ({self.base_url}): превышено время ожидания. "
-                "Запустите API: uvicorn app.main:app --app-dir server --port 8000"
+                "Проверьте адрес общего сервера."
             ) from error
         except URLError as error:
             raise ApiError(
                 f"Сервер недоступен ({self.base_url}): {error.reason}. "
-                "Запустите API: uvicorn app.main:app --app-dir server --port 8000"
+                "Проверьте адрес общего сервера."
             ) from error
         except OSError as error:
             raise ApiError(
                 f"Сервер недоступен ({self.base_url}): {error}. "
-                "Запустите API: uvicorn app.main:app --app-dir server --port 8000"
+                "Проверьте адрес общего сервера."
             ) from error

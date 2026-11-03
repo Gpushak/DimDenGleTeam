@@ -85,12 +85,12 @@ public class MainActivity extends AppCompatActivity {
         adapter = new WarehouseAdapter(this);
         binding.list.setAdapter(adapter);
 
-        binding.btnRefresh.setOnClickListener(v -> loadTree());
+        binding.btnRefresh.setOnClickListener(v -> refresh());
         binding.btnUp.setOnClickListener(v -> goUp());
         binding.btnServer.setOnClickListener(v -> showServerDialog());
         binding.btnScan.setOnClickListener(
                 v -> scanLauncher.launch(new Intent(this, ScanActivity.class)));
-        binding.swipeRefresh.setOnRefreshListener(this::loadTree);
+        binding.swipeRefresh.setOnRefreshListener(this::refresh);
 
         binding.list.setOnItemClickListener((parent, view, position, id) -> {
             WarehouseAdapter.Row row = adapter.getItem(position);
@@ -114,10 +114,29 @@ public class MainActivity extends AppCompatActivity {
             return false;
         });
 
+        updatePathLabel();
         loadTree();
     }
 
+    /**
+     * «Обновить» и свайп: заново читает дерево и текущий уровень.
+     * Открытый контейнер сохраняется, чтобы список совпал с десктопом,
+     * который тоже остаётся в выбранном контейнере.
+     */
+    private void refresh() {
+        List<Integer> ids = new ArrayList<>();
+        for (BoxNode node : path) {
+            ids.add(node.id);
+        }
+        loadTree(ids);
+    }
+
+    /** Полная перезагрузка с корня (старт и смена адреса сервера). */
     private void loadTree() {
+        loadTree(null);
+    }
+
+    private void loadTree(List<Integer> keepIds) {
         setLoading(true);
 
         ApiClient.api().getBoxTree().enqueue(new Callback<List<BoxNode>>() {
@@ -129,6 +148,15 @@ public class MainActivity extends AppCompatActivity {
                 if (response.isSuccessful() && response.body() != null) {
                     treeRoots = response.body();
                     path.clear();
+                    if (keepIds != null) {
+                        for (int id : keepIds) {
+                            BoxNode node = findNode(treeRoots, id);
+                            if (node == null) {
+                                break;
+                            }
+                            path.addLast(node);
+                        }
+                    }
                     renderLevel();
                 } else {
                     toast("Ошибка загрузки дерева: " + response.code());
@@ -383,16 +411,20 @@ public class MainActivity extends AppCompatActivity {
                 });
     }
 
+    /**
+     * Имя и тип берутся из свежего {@code /contents}. Из кэша дерева — только
+     * вложенные узлы, чтобы счётчик «вложенных» не обнулялся.
+     */
     private BoxNode toNode(BoxContents.ChildBox child) {
-        BoxNode known = findNode(treeRoots, child.id);
-        if (known != null) {
-            return known;
-        }
         BoxNode node = new BoxNode();
         node.id = child.id;
         node.name = child.name;
         node.box_type_id = child.box_type_id;
         node.box_type_name = child.box_type_name;
+        BoxNode known = findNode(treeRoots, child.id);
+        if (known != null && known.children != null) {
+            node.children = known.children;
+        }
         return node;
     }
 
@@ -403,6 +435,7 @@ public class MainActivity extends AppCompatActivity {
         for (BoxNode node : path) {
             sb.append(" / ").append(node.name);
         }
+        sb.append('\n').append(ServerConfig.getBaseUrl(this));
         binding.tvPath.setText(sb);
     }
 

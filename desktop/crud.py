@@ -159,8 +159,14 @@ def get_all_items(client: ApiClient) -> List[Item]:
 def get_items_by_box(
     client: ApiClient,
     box_id: int,
-    include_children: bool = True,
+    include_children: bool = False,
 ) -> List[Item]:
+    """Позиции контейнера.
+
+    По умолчанию только прямые — тот же срез, что `GET /boxes/{id}/contents`
+    на телефоне. Вложенные контейнеры видны в дереве, их товары появляются
+    после входа в контейнер.
+    """
     return [
         Item.from_api(row)
         for row in client.get("/items", {
