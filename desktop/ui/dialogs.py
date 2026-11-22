@@ -10,7 +10,7 @@ from api_client import ApiClient
 import crud
 from models import Box, ItemType, Item
 from ui import theme
-from ui.widgets import FormComboBox
+from ui.widgets import FormComboBox, action_icon
 
 #: Зазор между подписью параметра и полем с его значением
 #: (в единицах customtkinter, до DPI-масштаба).
@@ -124,6 +124,19 @@ def _form_value(widget, row: int):
     widget.grid(row=row, column=1, sticky='ew', padx=(_FIELD_GAP, 0), pady=5)
 
 
+def _form_actions(frame, row: int, on_save, on_cancel):
+    """«Сохранить» и «Отмена» с теми же значками, что у кнопок главного окна."""
+    btn_frame = ctk.CTkFrame(frame, fg_color='transparent')
+    btn_frame.grid(row=row, column=0, columnspan=2, pady=15)
+    save_icon = action_icon('save')
+    cancel_icon = action_icon('cancel')
+    btn_frame._icons = (save_icon, cancel_icon)
+    ctk.CTkButton(btn_frame, text='Сохранить', command=on_save, width=136,
+                  image=save_icon, compound='left').pack(side='left', padx=5)
+    ctk.CTkButton(btn_frame, text='Отмена', command=on_cancel, width=118,
+                  image=cancel_icon, compound='left').pack(side='left', padx=5)
+
+
 class BoxDialog:
     """Диалог создания/редактирования контейнера."""
     def __init__(self, parent, client: ApiClient, mode: str, box: Optional[Box] = None, parent_id: Optional[int] = None):
@@ -205,11 +218,7 @@ class BoxDialog:
         elif box_types:
             self.type_var.set(box_types[0].box_type_name)
 
-        # Кнопки
-        btn_frame = ctk.CTkFrame(frame, fg_color='transparent')
-        btn_frame.grid(row=3, column=0, columnspan=2, pady=15)
-        ctk.CTkButton(btn_frame, text='Сохранить', command=self._save, width=100).pack(side='left', padx=5)
-        ctk.CTkButton(btn_frame, text='Отмена', command=self.dialog.destroy, width=100).pack(side='left', padx=5)
+        _form_actions(frame, 3, self._save, self.dialog.destroy)
 
     @staticmethod
     def _descendant_ids(boxes: crud.BoxIndex, box_id: int) -> set:
@@ -312,11 +321,7 @@ class ItemTypeDialog:
         if self.mode == 'add':
             self._schedule_weight_refresh()
 
-        # Кнопки
-        btn_frame = ctk.CTkFrame(frame, fg_color='transparent')
-        btn_frame.grid(row=2, column=0, columnspan=2, pady=15)
-        ctk.CTkButton(btn_frame, text='Сохранить', command=self._save, width=100).pack(side='left', padx=5)
-        ctk.CTkButton(btn_frame, text='Отмена', command=self._destroy_dialog, width=100).pack(side='left', padx=5)
+        _form_actions(frame, 2, self._save, self._destroy_dialog)
 
     # ------------------------------------------------------------- весы
     def _scale_weight_g(self) -> Optional[int]:
@@ -486,11 +491,7 @@ class ItemDialog:
         qty_entry = ctk.CTkEntry(frame, textvariable=self.qty_var)
         _form_value(qty_entry, 2)
 
-        # Кнопки
-        btn_frame = ctk.CTkFrame(frame, fg_color='transparent')
-        btn_frame.grid(row=3, column=0, columnspan=2, pady=15)
-        ctk.CTkButton(btn_frame, text='Сохранить', command=self._save, width=100).pack(side='left', padx=5)
-        ctk.CTkButton(btn_frame, text='Отмена', command=self.dialog.destroy, width=100).pack(side='left', padx=5)
+        _form_actions(frame, 3, self._save, self.dialog.destroy)
 
     def _save(self):
         type_label = self.type_var.get()

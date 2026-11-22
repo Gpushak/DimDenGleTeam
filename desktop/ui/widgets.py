@@ -16,8 +16,54 @@ import tkinter.font as tkfont
 import tkinter.ttk as ttk
 
 import customtkinter as ctk
+from PIL import Image, ImageDraw
 
 from ui import theme
+
+
+def action_icon(kind: str, *, on_surface: bool = False) -> ctk.CTkImage:
+    """Тонкий знак 16×16.
+
+    На синей кнопке он белый, как подпись. ``on_surface=True`` — для прозрачной
+    кнопки: тёмный в светлой теме и светлый в тёмной.
+    """
+    def render(ink):
+        image = Image.new('RGBA', (32, 32), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(image)
+        if kind == 'edit':
+            draw.line((7, 25, 22, 10), fill=ink, width=3)
+            draw.polygon([(21, 6), (27, 12), (22, 12)], fill=ink)
+            draw.line((5, 27, 9, 23), fill=ink, width=3)
+        elif kind == 'delete':
+            draw.line((11, 5, 21, 5), fill=ink, width=3)
+            draw.line((5, 10, 27, 10), fill=ink, width=3)
+            draw.rounded_rectangle((7, 13, 25, 28), radius=2, outline=ink, width=2)
+            draw.line((12, 17, 12, 24), fill=ink, width=2)
+            draw.line((16, 17, 16, 24), fill=ink, width=2)
+            draw.line((20, 17, 20, 24), fill=ink, width=2)
+        elif kind == 'qr':
+            for origin_x, origin_y in ((4, 4), (18, 4), (4, 18)):
+                draw.rectangle((origin_x, origin_y, origin_x + 9, origin_y + 9),
+                               outline=ink, width=2)
+                draw.rectangle((origin_x + 3, origin_y + 3, origin_x + 6, origin_y + 6),
+                               fill=ink)
+            for origin_x, origin_y in ((19, 19), (24, 19), (19, 24), (25, 25)):
+                draw.rectangle((origin_x, origin_y, origin_x + 2, origin_y + 2), fill=ink)
+        elif kind == 'save':
+            draw.line((6, 17, 13, 25), fill=ink, width=3)
+            draw.line((13, 25, 26, 8), fill=ink, width=3)
+        else:
+            draw.line((8, 8, 24, 24), fill=ink, width=3)
+            draw.line((24, 8, 8, 24), fill=ink, width=3)
+        return image
+
+    if on_surface:
+        light = render((0x12, 0x14, 0x17, 255))
+        dark = render((0xE6, 0xE6, 0xE6, 255))
+    else:
+        light = render((255, 255, 255, 255))
+        dark = light
+    return ctk.CTkImage(light_image=light, dark_image=dark, size=(16, 16))
 
 
 # ------------------------------------------------------------------ совместимость

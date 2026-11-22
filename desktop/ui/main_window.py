@@ -13,7 +13,7 @@ from tkinter import filedialog, messagebox
 from typing import List, Optional
 
 import customtkinter as ctk
-from PIL import Image, ImageDraw
+from PIL import Image
 
 from api_client import ApiClient, ApiError
 from database import set_api_base_url, normalize_base_url
@@ -22,7 +22,7 @@ import crud
 from qrutil import qr_payload, qr_png_bytes
 from models import Box, Item
 from ui import theme
-from ui.widgets import DarkScrollableFrame, DarkTableFrame
+from ui.widgets import DarkScrollableFrame, DarkTableFrame, action_icon
 
 APP_NAME = 'Складской учёт'
 APP_VERSION = '1.0.0'
@@ -65,36 +65,6 @@ F5 — обновить данные с сервера
 
 Delete и F2 не срабатывают, пока курсор в поле ввода. Ctrl+Q и Ctrl+F работают и при русской раскладке.
 """
-
-
-def _action_icon(kind: str) -> ctk.CTkImage:
-    """Тонкий белый знак 16×16: на синей кнопке он совпадает с цветом подписи."""
-    image = Image.new('RGBA', (32, 32), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(image)
-    ink = (255, 255, 255, 255)
-    if kind == 'edit':
-        # Карандаш: грифель, корпус и кончик.
-        draw.line((7, 25, 22, 10), fill=ink, width=3)
-        draw.polygon([(21, 6), (27, 12), (22, 12)], fill=ink)
-        draw.line((5, 27, 9, 23), fill=ink, width=3)
-    elif kind == 'delete':
-        # Корзина: ручка, крышка и контур ящика.
-        draw.line((11, 5, 21, 5), fill=ink, width=3)
-        draw.line((5, 10, 27, 10), fill=ink, width=3)
-        draw.rounded_rectangle((7, 13, 25, 28), radius=2, outline=ink, width=2)
-        draw.line((12, 17, 12, 24), fill=ink, width=2)
-        draw.line((16, 17, 16, 24), fill=ink, width=2)
-        draw.line((20, 17, 20, 24), fill=ink, width=2)
-    else:
-        # QR: три угловых маркера и несколько модулей.
-        for origin_x, origin_y in ((4, 4), (18, 4), (4, 18)):
-            draw.rectangle((origin_x, origin_y, origin_x + 9, origin_y + 9),
-                           outline=ink, width=2)
-            draw.rectangle((origin_x + 3, origin_y + 3, origin_x + 6, origin_y + 6),
-                           fill=ink)
-        for origin_x, origin_y in ((19, 19), (24, 19), (19, 24), (25, 25)):
-            draw.rectangle((origin_x, origin_y, origin_x + 2, origin_y + 2), fill=ink)
-    return ctk.CTkImage(light_image=image, dark_image=image, size=(16, 16))
 
 
 def format_weight(grams: int) -> str:
@@ -860,10 +830,15 @@ class MainWindow:
 
         buttons = ctk.CTkFrame(frame, fg_color='transparent')
         buttons.pack(anchor='e')
-        ctk.CTkButton(buttons, text='Сохранить', width=120, border_width=0,
+        save_icon = action_icon('save')
+        cancel_icon = action_icon('cancel', on_surface=True)
+        buttons._icons = (save_icon, cancel_icon)
+        ctk.CTkButton(buttons, text='Сохранить', width=140, border_width=0,
+                      image=save_icon, compound='left',
                       command=save).pack(side='left', padx=(0, 8))
-        ctk.CTkButton(buttons, text='Отмена', width=100, border_width=0,
+        ctk.CTkButton(buttons, text='Отмена', width=120, border_width=0,
                       fg_color='transparent', hover_color=pal.hover, text_color=pal.text,
+                      image=cancel_icon, compound='left',
                       command=dialog.destroy).pack(side='left')
 
         _fit_dialog(dialog, self.root, 480)
@@ -911,9 +886,9 @@ class MainWindow:
         # side='bottom' пакуется раньше expand-виджета, иначе pack отдаст высоту дереву.
         self._tree_btn_frame = ctk.CTkFrame(left_frame, fg_color='transparent')
         self._tree_btn_frame.pack(side='bottom', fill='x', pady=(8, 0))
-        self._edit_icon = _action_icon('edit')
-        self._delete_icon = _action_icon('delete')
-        self._qr_icon = _action_icon('qr')
+        self._edit_icon = action_icon('edit')
+        self._delete_icon = action_icon('delete')
+        self._qr_icon = action_icon('qr')
         self._box_buttons = []
         for text, command, width in (('+ Контейнер', self._add_box, 112),
                                      ('Изменить', self._edit_box, 122),
