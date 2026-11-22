@@ -81,7 +81,7 @@ def main():
     print(f'switch to light: {light_s:.3f}s')
     assert light_s < 0.8, light_s
 
-    button = win._refresh_button
+    button = win._box_buttons[0]
     entry = None
 
     def walk(widget):
@@ -106,11 +106,9 @@ def main():
     assert contrast(efg, etext) >= 7
     assert contrast(efg, eborder) >= 3
 
-    seg = win.theme_switch
-    sfg = pick(seg.cget('selected_color'), 0)
-    stext = pick(seg.cget('text_color'), 0)
-    print(f'segment selected={sfg} text={stext} contrast={contrast(sfg, stext):.2f}')
-    assert contrast(sfg, stext) >= 4.5
+    labels = win._menu_bar.cascade_labels()
+    print('menu', labels)
+    assert labels == ['Файл', 'Правка', 'Вид', 'Операции', 'Справка']
 
     started = time.perf_counter()
     win._on_theme_selected('Тёмная')

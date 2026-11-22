@@ -1,16 +1,19 @@
 """Главное окно приложения на customtkinter.
 
-Верхняя панель: название, выбор темы (светлая/тёмная), пункт «О программе».
+Сверху — классическая строка меню (Файл, Правка, Вид, Операции, Справка).
 Основная область: дерево контейнеров слева, таблица товаров справа.
+Кнопки управления собраны внизу каждой панели, над строкой состояния.
 Рамки и границы нигде не рисуются — панели различаются только фоном.
 """
-import re
+import csv
 import io
+import re
+import tkinter as tk
+from tkinter import filedialog, messagebox
+from typing import List, Optional
 
 import customtkinter as ctk
-from PIL import Image
-from tkinter import messagebox
-from typing import Optional, List
+from PIL import Image, ImageDraw
 
 from api_client import ApiClient, ApiError
 from database import set_api_base_url, normalize_base_url
@@ -23,6 +26,75 @@ from ui.widgets import DarkScrollableFrame, DarkTableFrame
 
 APP_NAME = 'Складской учёт'
 APP_VERSION = '1.0.0'
+
+# Текст модального окна «Справка → Руководство».
+GUIDE_TEXT = """\
+Сверху — строка меню. Под ней поиск и две панели: дерево контейнеров слева и таблица товаров справа. Дерево и таблица занимают всё свободное место, кнопки стоят внизу панелей, над строкой состояния.
+
+Левая панель «Структура склада»
+
+«+ Контейнер» — новый контейнер. Выбранный контейнер станет родителем. Пункты «Все товары» и «Без расположения» создают контейнер в корне склада.
+«Изменить» — название и родитель выбранного контейнера.
+«Удалить» — удалить контейнер. Товары не стираются и остаются в «Без расположения».
+Щелчок по названию показывает товары контейнера. Значки ▼ и ▶ сворачивают ветку.
+
+Правая панель «Все товары»
+
+«+ Тип товара» — новый тип: название и вес одной единицы.
+«+ Товар» — новая позиция. Если в дереве выбран контейнер, он подставляется в диалог.
+«Изменить» — тип, количество и место выбранной строки.
+«Удалить» — удалить выбранную позицию.
+«QR» — QR-этикетка выбранного товара, её можно считать телефоном.
+
+Поиск сразу фильтрует таблицу. «Вид → Обновить» и клавиша F5 сбрасывают поиск и заново читают данные с сервера.
+
+Строка состояния показывает число позиций, общее количество, общий вес и показание весов. «Вид → Показать/Скрыть строку состояния» убирает и возвращает её. Пока строка видна, пункт отмечен галочкой.
+
+Меню «Файл» сохраняет текущую таблицу в CSV для Excel или в текстовый файл и закрывает программу.
+«Правка» переводит курсор в поиск или удаляет то, с чем работали последним: строку таблицы или контейнер.
+«Вид» переключает светлую и тёмную тему и обновляет данные.
+«Операции» — добавить контейнер, добавить товар, изменить и сгенерировать QR.
+«Справка» — адрес сервера, сведения о программе и это окно.
+
+Горячие клавиши
+Ctrl+Q — выход
+Ctrl+F — перейти к поиску
+Delete — удалить выбранный контейнер или товар
+F2 — изменить выбранный контейнер или товар
+F5 — обновить данные с сервера
+
+Delete и F2 не срабатывают, пока курсор в поле ввода. Ctrl+Q и Ctrl+F работают и при русской раскладке.
+"""
+
+
+def _action_icon(kind: str) -> ctk.CTkImage:
+    """Тонкий белый знак 16×16: на синей кнопке он совпадает с цветом подписи."""
+    image = Image.new('RGBA', (32, 32), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    ink = (255, 255, 255, 255)
+    if kind == 'edit':
+        # Карандаш: грифель, корпус и кончик.
+        draw.line((7, 25, 22, 10), fill=ink, width=3)
+        draw.polygon([(21, 6), (27, 12), (22, 12)], fill=ink)
+        draw.line((5, 27, 9, 23), fill=ink, width=3)
+    elif kind == 'delete':
+        # Корзина: ручка, крышка и контур ящика.
+        draw.line((11, 5, 21, 5), fill=ink, width=3)
+        draw.line((5, 10, 27, 10), fill=ink, width=3)
+        draw.rounded_rectangle((7, 13, 25, 28), radius=2, outline=ink, width=2)
+        draw.line((12, 17, 12, 24), fill=ink, width=2)
+        draw.line((16, 17, 16, 24), fill=ink, width=2)
+        draw.line((20, 17, 20, 24), fill=ink, width=2)
+    else:
+        # QR: три угловых маркера и несколько модулей.
+        for origin_x, origin_y in ((4, 4), (18, 4), (4, 18)):
+            draw.rectangle((origin_x, origin_y, origin_x + 9, origin_y + 9),
+                           outline=ink, width=2)
+            draw.rectangle((origin_x + 3, origin_y + 3, origin_x + 6, origin_y + 6),
+                           fill=ink)
+        for origin_x, origin_y in ((19, 19), (24, 19), (19, 24), (25, 25)):
+            draw.rectangle((origin_x, origin_y, origin_x + 2, origin_y + 2), fill=ink)
+    return ctk.CTkImage(light_image=image, dark_image=image, size=(16, 16))
 
 
 def format_weight(grams: int) -> str:
@@ -347,7 +419,248 @@ def natural_key(text: str):
     return [int(p) if p.isdigit() else p.lower() for p in parts]
 
 
+class ThemedMenu:
+    """Пункты одного выпадающего меню. Рисуется заново при каждом открытии."""
+
+    def __init__(self):
+        self.items: List[dict] = []
+
+    def add_command(self, label, command=None, accelerator=''):
+        self.items.append({'kind': 'command', 'label': label,
+                           'command': command, 'accelerator': accelerator})
+
+    def add_separator(self):
+        self.items.append({'kind': 'separator'})
+
+    def add_checkbutton(self, label, variable, command=None):
+        self.items.append({'kind': 'check', 'label': label,
+                           'variable': variable, 'command': command})
+
+    def add_radiobutton(self, label, value, variable, command=None):
+        self.items.append({'kind': 'radio', 'label': label, 'value': value,
+                           'variable': variable, 'command': command})
+
+
+class ThemedMenuBar(ctk.CTkFrame):
+    """Строка меню в цветах текущей темы.
+
+    Системное меню Windows рисуется отдельно и не принимает цвета окна,
+    поэтому пункты — обычные кнопки панели, а список открывается своим окном.
+    """
+
+    def __init__(self, master):
+        pal = theme.palette()
+        super().__init__(master, fg_color=pal.panel_bg, corner_radius=0,
+                         border_width=0, height=34)
+        self.pack_propagate(False)
+        self._entries = []
+        self._popup = None
+        self._open_index = None
+        toplevel = self.winfo_toplevel()
+        toplevel.bind('<Escape>', self._on_escape, add='+')
+        # Клик мимо списка закрывает его. CTk запрещает bind_all на своих
+        # виджетах — вешаем обработчик через tk.
+        tk.Misc.bind_all(toplevel, '<Button-1>', self._on_global_click, add='+')
+
+    def add_cascade(self, label: str, menu: ThemedMenu) -> ThemedMenu:
+        pal = theme.palette()
+        index = len(self._entries)
+        button = ctk.CTkButton(
+            self, text=label,
+            width=max(52, 11 * len(label) + 18), height=26,
+            corner_radius=4, border_width=0,
+            fg_color='transparent', hover_color=pal.hover,
+            text_color=pal.text, font=ctk.CTkFont(size=13),
+            command=lambda i=index: self._on_title_click(i),
+        )
+        button.pack(side='left', padx=(8 if index == 0 else 0, 2), pady=4)
+        button.bind('<Enter>', lambda _event, i=index: self._on_title_enter(i), add='+')
+        self._entries.append((label, menu, button))
+        return menu
+
+    def cascade_labels(self) -> List[str]:
+        return [label for label, _menu, _button in self._entries]
+
+    def apply_theme(self):
+        """Перекрасить полосу и закрыть открытый список: он собран в старых цветах."""
+        self.close()
+        pal = theme.palette()
+        self.configure(fg_color=pal.panel_bg)
+        for _label, _menu, button in self._entries:
+            button.configure(fg_color='transparent', hover_color=pal.hover,
+                             text_color=pal.text)
+
+    def close(self):
+        popup = self._popup
+        self._popup = None
+        self._open_index = None
+        if popup is not None:
+            try:
+                popup.destroy()
+            except tk.TclError:
+                pass
+        pal = theme.palette()
+        for _label, _menu, button in self._entries:
+            try:
+                if button.winfo_exists():
+                    button.configure(fg_color='transparent', text_color=pal.text,
+                                     hover_color=pal.hover)
+            except tk.TclError:
+                pass
+
+    def _on_title_click(self, index: int):
+        if self._open_index == index:
+            self.close()
+            return
+        self._open_menu(index)
+
+    def _on_title_enter(self, index: int):
+        # Как в обычном меню: пока список открыт, наведение переключает его.
+        if self._open_index is not None and self._open_index != index:
+            self._open_menu(index)
+
+    def _open_menu(self, index: int):
+        self.close()
+        label, menu, button = self._entries[index]
+        pal = theme.palette()
+        button.configure(fg_color=pal.hover, text_color=pal.text)
+        self._open_index = index
+        self._popup = self._build_popup(menu, button)
+
+    def _build_popup(self, menu: ThemedMenu, anchor):
+        """Список внутри главного окна: цвета те же, что у панелей."""
+        pal = theme.palette()
+        top = self.winfo_toplevel()
+        popup = ctk.CTkFrame(top, fg_color=pal.panel_bg, corner_radius=0,
+                             border_width=1, border_color=pal.border)
+
+        for item in menu.items:
+            if item['kind'] == 'separator':
+                ctk.CTkFrame(popup, fg_color=pal.border, height=1,
+                             corner_radius=0, border_width=0).pack(
+                    fill='x', padx=8, pady=4)
+                continue
+            self._add_row(popup, item, pal)
+
+        x = anchor.winfo_rootx() - top.winfo_rootx()
+        y = anchor.winfo_rooty() - top.winfo_rooty() + anchor.winfo_height()
+        popup.place(x=x, y=y)
+        popup.update_idletasks()
+        width = max(popup.winfo_reqwidth(), 1)
+        height = max(popup.winfo_reqheight(), 1)
+        if x + width > top.winfo_width() - 4:
+            x = max(4, top.winfo_width() - width - 4)
+        if y + height > top.winfo_height() - 4:
+            above = anchor.winfo_rooty() - top.winfo_rooty() - height
+            y = max(4, above)
+        popup.place(x=x, y=y)
+        popup.lift()
+        return popup
+
+    def _add_row(self, shell, item, pal):
+        row = ctk.CTkFrame(shell, fg_color=pal.panel_bg, corner_radius=4,
+                           height=30, border_width=0)
+        row.pack(fill='x', padx=4, pady=1)
+        row.pack_propagate(False)
+
+        marked = False
+        if item['kind'] == 'check':
+            marked = bool(item['variable'].get())
+        elif item['kind'] == 'radio':
+            marked = str(item['variable'].get()) == str(item['value'])
+        mark = ctk.CTkLabel(row, text='✓' if marked else '', width=18,
+                            text_color=pal.text, fg_color=pal.panel_bg)
+        mark.pack(side='left', padx=(6, 0))
+        caption = ctk.CTkLabel(row, text=item['label'], anchor='w',
+                               text_color=pal.text, fg_color=pal.panel_bg)
+        caption.pack(side='left', fill='x', expand=True, padx=(2, 8))
+        accelerator = item.get('accelerator') or ''
+        accel = None
+        if accelerator:
+            accel = ctk.CTkLabel(row, text=accelerator, text_color=pal.muted_text,
+                                 fg_color=pal.panel_bg)
+            accel.pack(side='right', padx=(8, 10))
+
+        def activate(_event=None, current=item):
+            self._run_item(current)
+            return 'break'
+
+        def enter(_event=None):
+            self._paint_row(row, pal.hover, pal.text, pal.muted_text)
+
+        def leave(event):
+            target = row.winfo_containing(event.x_root, event.y_root)
+            if self._widget_inside(target, row):
+                return
+            self._paint_row(row, pal.panel_bg, pal.text, pal.muted_text)
+
+        for widget in (row, mark, caption, accel):
+            if widget is None:
+                continue
+            widget.bind('<Button-1>', activate)
+            widget.bind('<Enter>', enter)
+            widget.bind('<Leave>', leave)
+
+    @staticmethod
+    def _paint_row(row, background, text, muted):
+        row.configure(fg_color=background)
+        children = row.winfo_children()
+        # Три виджета — отметка, подпись и сочетание клавиш. Сочетание тусклее.
+        for index, child in enumerate(children):
+            color = muted if len(children) > 2 and index == len(children) - 1 else text
+            try:
+                child.configure(fg_color=background, text_color=color)
+            except tk.TclError:
+                pass
+
+    def _run_item(self, item):
+        if item['kind'] == 'check':
+            item['variable'].set(not bool(item['variable'].get()))
+        elif item['kind'] == 'radio':
+            item['variable'].set(item['value'])
+        command = item.get('command')
+        self.close()
+        if command is not None:
+            command()
+
+    def _on_escape(self, _event=None):
+        if self._popup is None:
+            return None
+        self.close()
+        return 'break'
+
+    def _on_global_click(self, event):
+        if self._popup is None:
+            return None
+        widget = event.widget
+        if self._widget_inside(widget, self._popup) or self._is_title(widget):
+            return None
+        self.close()
+        return None
+
+    def _is_title(self, widget) -> bool:
+        titles = {button for _label, _menu, button in self._entries}
+        while widget is not None:
+            if widget in titles:
+                return True
+            widget = getattr(widget, 'master', None)
+        return False
+
+    @staticmethod
+    def _widget_inside(widget, ancestor) -> bool:
+        while widget is not None:
+            if widget == ancestor:
+                return True
+            widget = getattr(widget, 'master', None)
+        return False
+
+
 class MainWindow:
+    # Подписи переключателя темы. Оставлены для вызова _on_theme_selected
+    # (проверка контраста и ручное переключение по названию режима).
+    _THEME_CAPTIONS = {'light': 'Светлая', 'dark': 'Тёмная'}
+    _THEME_VALUES = {'Светлая': 'light', 'Тёмная': 'dark'}
+
     # колонки таблицы товаров: (iid, заголовок, ширина)
     COLUMNS = (
         ('type', 'Тип товара', 200),
@@ -374,85 +687,93 @@ class MainWindow:
         self._sort_column: Optional[str] = None
         self._sort_reverse: bool = False
         self._suppress_search = False
+        # Куда смотрят «Изменить» и «Удалить» в меню: дерево или таблица.
+        self._command_target = 'box'
+        # Пока таблица перерисовывается, её <<TreeviewSelect>> не меняет цель.
+        self._rendering_table = False
+        # Программный select_node при пересборке дерева — не смена цели команд.
+        self._refreshing_tree = False
 
         self._create_widgets()
         self._refresh_all()
 
-    # ============================================================ верхняя панель
-    def _create_topbar(self):
+    # =============================================================== строка меню
+    def _create_menubar(self):
+        """Строка меню в цветах темы, выше рабочей области."""
+        self._theme_var = tk.StringVar(value=theme.current_mode())
+        self._status_visible = tk.BooleanVar(value=True)
+
+        bar = ThemedMenuBar(self.root)
+        bar.pack(side='top', fill='x')
+        self._menu_bar = bar
+
         pal = theme.palette()
-        bar = ctk.CTkFrame(self.root, fg_color=pal.panel_bg, corner_radius=0,
-                           border_width=0, height=52)
-        bar.pack(fill='x', side='top')
-        bar.pack_propagate(False)
-        self._topbar = bar
+        self._menu_sep = ctk.CTkFrame(self.root, fg_color=pal.border, height=1,
+                                      corner_radius=0, border_width=0)
+        self._menu_sep.pack(side='top', fill='x')
 
-        self._topbar_title = ctk.CTkLabel(
-            bar, text=APP_NAME,
-            font=ctk.CTkFont(size=16, weight='bold'),
-            text_color=pal.text,
-        )
-        self._topbar_title.pack(side='left', padx=(18, 0))
+        file_menu = bar.add_cascade('Файл', ThemedMenu())
+        file_menu.add_command('Экспорт в Excel (CSV)', command=self._export_csv)
+        file_menu.add_command('Экспорт в txt', command=self._export_txt)
+        file_menu.add_separator()
+        file_menu.add_command('Выход', command=self._quit, accelerator='Ctrl+Q')
 
-        # Правая часть панели: тема + «О программе»
-        right = ctk.CTkFrame(bar, fg_color='transparent')
-        right.pack(side='right', padx=(0, 12))
+        edit_menu = bar.add_cascade('Правка', ThemedMenu())
+        edit_menu.add_command('Поиск', command=self._focus_search, accelerator='Ctrl+F')
+        edit_menu.add_separator()
+        edit_menu.add_command('Удалить', command=self._delete_current, accelerator='Delete')
 
-        self._theme_label = ctk.CTkLabel(right, text='Тема:',
-                                         text_color=pal.muted_text)
-        self._theme_label.pack(side='left', padx=(0, 6))
+        view_menu = bar.add_cascade('Вид', ThemedMenu())
+        view_menu.add_radiobutton('Светлая тема', 'light', self._theme_var,
+                                  command=self._on_theme_radio)
+        view_menu.add_radiobutton('Тёмная тема', 'dark', self._theme_var,
+                                  command=self._on_theme_radio)
+        view_menu.add_separator()
+        view_menu.add_command('Обновить', command=self._refresh_all, accelerator='F5')
+        view_menu.add_separator()
+        view_menu.add_checkbutton('Показать/Скрыть строку состояния',
+                                  self._status_visible,
+                                  command=self._toggle_status_bar)
 
-        # Сегменты сразу с русскими подписями — без обращения к приватным
-        # атрибутам CTkSegmentedButton (совместимо с customtkinter >= 6.0).
-        self._THEME_CAPTIONS = {'light': 'Светлая', 'dark': 'Тёмная'}
-        self._THEME_VALUES = {caption: mode
-                              for mode, caption in self._THEME_CAPTIONS.items()}
-        self.theme_switch = ctk.CTkSegmentedButton(
-            right,
-            values=[self._THEME_CAPTIONS['light'], self._THEME_CAPTIONS['dark']],
-            height=30,
-            corner_radius=8,
-            border_width=0,
-            font=ctk.CTkFont(size=13),
-            command=self._on_theme_selected,
-        )
-        self.theme_switch.set(self._THEME_CAPTIONS[theme.current_mode()])
-        self.theme_switch.pack(side='left', padx=(0, 10))
+        ops_menu = bar.add_cascade('Операции', ThemedMenu())
+        ops_menu.add_command('Добавить контейнер', command=self._add_box)
+        ops_menu.add_command('Добавить товар', command=self._add_item)
+        ops_menu.add_separator()
+        ops_menu.add_command('Изменить', command=self._edit_current, accelerator='F2')
+        ops_menu.add_command('Сгенерировать QR', command=self._show_qr)
 
-        self._refresh_button = ctk.CTkButton(
-            right, text='Обновить', width=100, height=30,
-            corner_radius=8, border_width=0,
-            command=self._refresh_all,
-        )
-        self._refresh_button.pack(side='left', padx=(0, 8))
+        help_menu = bar.add_cascade('Справка', ThemedMenu())
+        help_menu.add_command('Сервер', command=self._show_server_dialog)
+        help_menu.add_command('О программе', command=self._show_about)
+        help_menu.add_separator()
+        help_menu.add_command('Руководство', command=self._show_guide)
 
-        self._server_button = ctk.CTkButton(
-            right, text='Сервер', width=90, height=30,
-            corner_radius=8, border_width=0,
-            fg_color='transparent',
-            hover_color=pal.hover, text_color=pal.text,
-            command=self._show_server_dialog,
-        )
-        self._server_button.pack(side='left', padx=(0, 8))
+        self.root.bind('<Control-KeyPress>', self._on_control_key)
+        self.root.bind('<F5>', self._on_f5)
+        self.root.bind('<F2>', self._on_f2)
+        self.root.bind('<Delete>', self._on_delete_key)
 
-        self._about_button = ctk.CTkButton(
-            right, text='О программе', width=110, height=30,
-            corner_radius=8, border_width=0,
-            fg_color='transparent',
-            hover_color=pal.hover, text_color=pal.text,
-            command=self._show_about,
-        )
-        self._about_button.pack(side='left')
+    def _paint_menus(self):
+        """Перекрасить строку меню под текущую тему."""
+        if hasattr(self, '_menu_bar'):
+            self._menu_bar.apply_theme()
+        if hasattr(self, '_menu_sep'):
+            self._menu_sep.configure(fg_color=theme.palette().border)
 
-        # Тонкая линия-разделитель вместо рамки
-        self._topbar_sep = ctk.CTkFrame(self.root, fg_color=pal.border, height=1,
-                                       corner_radius=0, border_width=0)
-        self._topbar_sep.pack(fill='x', side='top')
+    def _on_theme_radio(self):
+        self._apply_mode(self._theme_var.get())
 
     def _on_theme_selected(self, caption: str):
-        mode = self._THEME_VALUES.get(caption, theme.current_mode())
+        """Переключить тему по подписи «Светлая»/«Тёмная» или по ключу режима."""
+        mode = self._THEME_VALUES.get(caption, caption)
+        if mode not in ('light', 'dark'):
+            mode = theme.current_mode()
+        self._apply_mode(mode)
+
+    def _apply_mode(self, mode: str):
         theme.apply_theme(mode)
-        # Статичные панели (верхняя/нижняя) перекрашиваем под новую тему
+        if getattr(self, '_theme_var', None) is not None and self._theme_var.get() != mode:
+            self._theme_var.set(mode)
         self._retopaint_chrome()
 
     def _show_about(self):
@@ -549,11 +870,12 @@ class MainWindow:
 
     # ============================================================== содержимое
     def _create_widgets(self):
-        self._create_topbar()
+        self._create_menubar()
 
-        # Главный контейнер
+        # Главный контейнер. Строка меню уже стоит над клиентской областью.
         main_frame = ctk.CTkFrame(self.root, fg_color='transparent')
         main_frame.pack(fill='both', expand=True, padx=14, pady=(10, 6))
+        self._main_frame = main_frame
 
         # Поиск
         search_frame = ctk.CTkFrame(main_frame, fg_color='transparent')
@@ -566,16 +888,16 @@ class MainWindow:
         self._search_label.pack(side='left', padx=(0, 6))
         self.search_var = ctk.StringVar()
         self.search_var.trace_add('write', lambda *_: self._on_search())
-        search_entry = ctk.CTkEntry(search_frame, textvariable=self.search_var,
-                                    width=300, corner_radius=8, height=34)
-        search_entry.pack(side='left')
+        self.search_entry = ctk.CTkEntry(search_frame, textvariable=self.search_var,
+                                         width=300, corner_radius=8, height=34)
+        self.search_entry.pack(side='left')
 
         # Основная область: две панели без рамок, разделены тонкой линией
         paned = ctk.CTkFrame(main_frame, fg_color='transparent')
         paned.pack(fill='both', expand=True)
 
         # Левая панель — дерево
-        left_frame = ctk.CTkFrame(paned, width=330, fg_color='transparent',
+        left_frame = ctk.CTkFrame(paned, width=368, fg_color='transparent',
                                   corner_radius=0, border_width=0)
         left_frame.pack(side='left', fill='y', padx=(0, 0))
         left_frame.pack_propagate(False)
@@ -585,15 +907,19 @@ class MainWindow:
                                         text_color=theme.palette().text)
         self._tree_title.pack(anchor='w', pady=(2, 6))
 
-        # Кнопки управления деревом
-        tree_btn_frame = ctk.CTkFrame(left_frame, fg_color='transparent')
-        tree_btn_frame.pack(fill='x', pady=(0, 6))
-        for text, command in (('+ Контейнер', self._add_box),
-                              ('✎ Изменить', self._edit_box),
-                              ('✕ Удалить', self._delete_box)):
-            ctk.CTkButton(tree_btn_frame, text=text, command=command,
-                          width=100, height=30, corner_radius=8,
-                          border_width=0).pack(side='left', padx=(0, 6))
+        # Кнопки — внизу панели, дерево забирает всё место между заголовком и ними.
+        # side='bottom' пакуется раньше expand-виджета, иначе pack отдаст высоту дереву.
+        self._tree_btn_frame = ctk.CTkFrame(left_frame, fg_color='transparent')
+        self._tree_btn_frame.pack(side='bottom', fill='x', pady=(8, 0))
+        self._edit_icon = _action_icon('edit')
+        self._delete_icon = _action_icon('delete')
+        self._qr_icon = _action_icon('qr')
+        self._box_buttons = []
+        for text, command, width in (('+ Контейнер', self._add_box, 112),
+                                     ('Изменить', self._edit_box, 122),
+                                     ('Удалить', self._delete_box, 116)):
+            self._box_buttons.append(
+                self._toolbar_button(self._tree_btn_frame, text, command, width))
 
         # Дерево
         self.tree = TreeWidget(left_frame)
@@ -616,17 +942,17 @@ class MainWindow:
                                          text_color=theme.palette().text)
         self.items_header.pack(anchor='w', pady=(2, 6))
 
-        # Кнопки управления товарами
-        item_btn_frame = ctk.CTkFrame(right_frame, fg_color='transparent')
-        item_btn_frame.pack(fill='x', pady=(0, 6))
+        # Кнопки — под таблицей, в одну линию, над строкой состояния окна.
+        self._item_btn_frame = ctk.CTkFrame(right_frame, fg_color='transparent')
+        self._item_btn_frame.pack(side='bottom', fill='x', pady=(8, 0))
+        self._item_buttons = []
         for text, command, width in (('+ Тип товара', self._add_item_type, 110),
                                      ('+ Товар', self._add_item, 90),
-                                     ('✎ Изменить', self._edit_item, 100),
-                                     ('✕ Удалить', self._delete_item, 100),
-                                     ('QR', self._show_qr, 60)):
-            ctk.CTkButton(item_btn_frame, text=text, command=command,
-                          width=width, height=30, corner_radius=8,
-                          border_width=0).pack(side='left', padx=(0, 6))
+                                     ('Изменить', self._edit_item, 122),
+                                     ('Удалить', self._delete_item, 116),
+                                     ('QR', self._show_qr, 78)):
+            self._item_buttons.append(
+                self._toolbar_button(self._item_btn_frame, text, command, width))
 
         # Таблица товаров
         cols = tuple(c[0] for c in self.COLUMNS)
@@ -634,8 +960,10 @@ class MainWindow:
         widths = {c[0]: c[2] for c in self.COLUMNS}
         self.table = DarkTableFrame(right_frame, columns=cols, headings=headings,
                                     column_widths=widths)
-        self.table.pack(fill='both', expand=True, pady=(0, 4))
+        self.table.pack(fill='both', expand=True)
         self.items_tree = self.table.tree
+        self.items_tree.bind('<<TreeviewSelect>>', self._on_item_select, add='+')
+        self.items_tree.bind('<Button-1>', self._mark_item_target, add='+')
 
         # Сортировка по клику на шапку
         for col, title, _w in self.COLUMNS:
@@ -655,16 +983,27 @@ class MainWindow:
                                          anchor='w', text_color=pal.muted_text)
         self._status_label.pack(fill='x', padx=14)
 
+    def _toolbar_button(self, parent, text, command, width):
+        """Кнопка нижней панели. У части кнопок знак стоит перед текстом."""
+        icon = None
+        if text == 'Изменить':
+            icon = self._edit_icon
+        elif text == 'Удалить':
+            icon = self._delete_icon
+        elif text == 'QR':
+            icon = self._qr_icon
+        button = ctk.CTkButton(
+            parent, text=text, command=command,
+            width=width, height=30, corner_radius=8, border_width=0,
+            image=icon, compound='left',
+        )
+        button.pack(side='left', padx=(0, 6))
+        return button
+
     def _retopaint_chrome(self):
-        """Перекрасить статичные элементы (панели, разделители) под текущую тему."""
+        """Перекрасить статичные элементы (меню, разделители) под текущую тему."""
         pal = theme.palette()
-        if hasattr(self, '_topbar'):
-            self._topbar.configure(fg_color=pal.panel_bg)
-            self._topbar_title.configure(text_color=pal.text)
-            self._theme_label.configure(text_color=pal.muted_text)
-            self._about_button.configure(hover_color=pal.hover, text_color=pal.text)
-            self._server_button.configure(hover_color=pal.hover, text_color=pal.text)
-            self._topbar_sep.configure(fg_color=pal.border)
+        self._paint_menus()
         if hasattr(self, '_status_bar'):
             self._status_bar.configure(fg_color=pal.panel_bg)
             self._status_label.configure(text_color=pal.muted_text)
@@ -743,6 +1082,13 @@ class MainWindow:
         selected = self.selected_box_id
         # Состояние раскрытия (self.tree._expanded_state) НЕ сбрасывается:
         # свёрнутые ветки остаются свёрнутыми после обновления данных.
+        self._refreshing_tree = True
+        try:
+            self._rebuild_tree(selected)
+        finally:
+            self._refreshing_tree = False
+
+    def _rebuild_tree(self, selected):
         self.tree.clear()
         self.tree.begin_build()
 
@@ -880,37 +1226,240 @@ class MainWindow:
             f'Общее кол-во: {total_qty} | Общий вес: {format_weight(total_weight)}{scale}'
         )
 
+    def _ordered_rows(self) -> List[tuple]:
+        """Строки таблицы в том порядке, в каком они сейчас показаны."""
+        rows = list(self._current_rows)
+        if self._sort_column is not None:
+            rows.sort(key=lambda row: self._sort_key_for_row(row, self._sort_column),
+                      reverse=self._sort_reverse)
+        return rows
+
     def _render_items_table(self):
         keep_selection = self.items_tree.selection()
         keep_iid = keep_selection[0] if keep_selection else None
 
-        self.table.clear()
+        self._rendering_table = True
+        try:
+            self.table.clear()
 
-        rows = self._current_rows
-        if self._sort_column is not None:
-            rows = sorted(rows, key=lambda r: self._sort_key_for_row(r, self._sort_column),
-                          reverse=self._sort_reverse)
+            for iid, values in self._ordered_rows():
+                self.items_tree.insert('', 'end', iid=iid, values=values,
+                                       tags=('evenrow',) if self.table._row_count % 2 == 0 else ('oddrow',))
+                self.table._row_count += 1
 
-        for iid, values in rows:
-            self.items_tree.insert('', 'end', iid=iid, values=values,
-                                   tags=('evenrow',) if self.table._row_count % 2 == 0 else ('oddrow',))
-            self.table._row_count += 1
+            # Обновить индикаторы сортировки в шапках
+            for col, title, _w in self.COLUMNS:
+                self.items_tree.heading(col, text=self._heading_text(col, title))
 
-        # Обновить индикаторы сортировки в шапках
-        for col, title, _w in self.COLUMNS:
-            self.items_tree.heading(col, text=self._heading_text(col, title))
+            if keep_iid and self.items_tree.exists(keep_iid):
+                self.items_tree.selection_set(keep_iid)
+                self.items_tree.see(keep_iid)
 
-        if keep_iid and self.items_tree.exists(keep_iid):
-            self.items_tree.selection_set(keep_iid)
-            self.items_tree.see(keep_iid)
-
-        self.items_tree.update_idletasks()
-        self.table.refresh_column_separators()
+            self.items_tree.update_idletasks()
+            self.table.refresh_column_separators()
+        finally:
+            self._rendering_table = False
 
     # -------------------------------------------------------------- handlers
     def _on_tree_select(self, box_id):
+        # Клик по дереву. Повторный select при пересборке цель команд не меняет.
+        if not self._refreshing_tree:
+            self._command_target = 'box'
         self.selected_box_id = box_id
         self._refresh_items()
+
+    def _mark_item_target(self, event=None):
+        """Клик по строке таблицы: следующие Изменить/Удалить относятся к товару."""
+        if event is not None:
+            region = self.items_tree.identify_region(event.x, event.y)
+            if region in ('heading', 'separator', 'nothing'):
+                return
+        self._command_target = 'item'
+
+    def _on_item_select(self, _event=None):
+        if self._rendering_table:
+            return
+        self._command_target = 'item'
+
+    def _edit_current(self, _event=None):
+        """Изменить контейнер или товар — то, с чем работали последним."""
+        if self._command_target == 'item' and self.items_tree.selection():
+            self._edit_item()
+        else:
+            self._edit_box()
+
+    def _delete_current(self, _event=None):
+        """Удалить контейнер или товар — то, с чем работали последним."""
+        if self._command_target == 'item' and self.items_tree.selection():
+            self._delete_item()
+        else:
+            self._delete_box()
+
+    def _export_csv(self):
+        """Сохранить текущую таблицу в CSV, который открывается в Excel."""
+        self._export_table(
+            title='Экспорт в Excel (CSV)',
+            extension='.csv',
+            filetypes=(('CSV, Excel', '*.csv'), ('Все файлы', '*.*')),
+            initial='товары.csv',
+            delimiter=';',
+        )
+
+    def _export_txt(self):
+        """Сохранить текущую таблицу в текстовый файл."""
+        self._export_table(
+            title='Экспорт в txt',
+            extension='.txt',
+            filetypes=(('Текст', '*.txt'), ('Все файлы', '*.*')),
+            initial='товары.txt',
+            delimiter='\t',
+        )
+
+    def _export_table(self, *, title, extension, filetypes, initial, delimiter):
+        path = filedialog.asksaveasfilename(
+            parent=self.root,
+            title=title,
+            defaultextension=extension,
+            filetypes=filetypes,
+            initialfile=initial,
+        )
+        if not path:
+            return
+        headers = [column_title for _iid, column_title, _width in self.COLUMNS]
+        try:
+            with open(path, 'w', newline='', encoding='utf-8-sig') as handle:
+                writer = csv.writer(handle, delimiter=delimiter, lineterminator='\n')
+                writer.writerow(headers)
+                for _iid, values in self._ordered_rows():
+                    writer.writerow(values)
+        except OSError as error:
+            messagebox.showerror('Экспорт', str(error), parent=self.root)
+            return
+        messagebox.showinfo(
+            'Экспорт',
+            f'Сохранено строк: {len(self._current_rows)}\n{path}',
+            parent=self.root,
+        )
+
+    def _quit(self, _event=None):
+        self.root.destroy()
+        return 'break'
+
+    def _focus_search(self, _event=None):
+        self.search_entry.focus_set()
+        try:
+            self.search_entry.select_range(0, 'end')
+        except tk.TclError:
+            pass
+        return 'break'
+
+    def _dialog_open(self) -> bool:
+        try:
+            return self.root.grab_current() is not None
+        except tk.TclError:
+            return False
+
+    def _focus_is_editor(self) -> bool:
+        widget = self.root.focus_get()
+        if widget is None:
+            return False
+        try:
+            kind = widget.winfo_class()
+        except tk.TclError:
+            return False
+        return kind in ('Entry', 'Text', 'TEntry', 'Spinbox', 'TCombobox')
+
+    def _on_control_key(self, event):
+        """Ctrl+Q и Ctrl+F. На Windows keycode не зависит от раскладки."""
+        keysym = (event.keysym or '').lower()
+        # keycode — виртуальная клавиша Windows (не зависит от раскладки),
+        # keysym — латиница или кириллица на этой же физической клавише.
+        if event.keycode == 81 or keysym in ('q', 'cyrillic_shorti'):
+            if self._dialog_open():
+                return 'break'
+            return self._quit()
+        if event.keycode == 70 or keysym in ('f', 'cyrillic_a'):
+            if self._dialog_open():
+                return 'break'
+            return self._focus_search()
+        return None
+
+    def _on_f5(self, _event=None):
+        if self._dialog_open():
+            return 'break'
+        self._refresh_all()
+        return 'break'
+
+    def _on_f2(self, _event=None):
+        if self._dialog_open() or self._focus_is_editor():
+            return 'break' if self._dialog_open() else None
+        self._edit_current()
+        return 'break'
+
+    def _on_delete_key(self, _event=None):
+        if self._dialog_open() or self._focus_is_editor():
+            return None
+        self._delete_current()
+        return 'break'
+
+    def _toggle_status_bar(self):
+        visible = bool(self._status_visible.get())
+        self._status_sep.pack_forget()
+        self._status_bar.pack_forget()
+        if not visible:
+            return
+        self._status_sep.pack(fill='x', side='bottom')
+        self._status_bar.pack(fill='x', side='bottom')
+
+    def _show_guide(self):
+        """Модальное окно: что делают кнопки и какие есть сочетания клавиш.
+
+        Высота подгоняется под текст, чтобы список клавиш был виден целиком.
+        Если на низком экране окно не влезает, текст прокручивается колёсиком.
+        """
+        from ui.dialogs import _center_dialog
+
+        dialog = ctk.CTkToplevel(self.root)
+        dialog.title('Руководство')
+        dialog.transient(self.root)
+        dialog.resizable(True, True)
+        dialog.minsize(520, 360)
+        try:
+            dialog.grab_set()
+        except Exception:
+            pass
+
+        pal = theme.palette()
+        dialog.configure(fg_color=pal.window_bg)
+        frame = ctk.CTkFrame(dialog, fg_color=pal.panel_bg, corner_radius=12,
+                             border_width=0)
+        frame.pack(fill='both', expand=True, padx=16, pady=16)
+
+        ctk.CTkLabel(frame, text='Руководство',
+                     font=ctk.CTkFont(size=18, weight='bold'),
+                     text_color=pal.text).pack(anchor='w', padx=16, pady=(14, 6))
+
+        ctk.CTkButton(frame, text='Закрыть', width=120, border_width=0,
+                      command=dialog.destroy).pack(side='bottom', pady=(0, 14))
+
+        scroller = DarkScrollableFrame(frame, fg_color='transparent')
+        scroller.pack(fill='both', expand=True, padx=8, pady=(0, 8))
+        body = ctk.CTkLabel(
+            scroller, text=GUIDE_TEXT, justify='left', anchor='nw',
+            text_color=pal.text, wraplength=560,
+            font=ctk.CTkFont(size=13),
+        )
+        body.pack(fill='x', anchor='w', padx=8)
+
+        dialog.bind('<Escape>', lambda _event: dialog.destroy())
+        dialog.update_idletasks()
+        screen_h = dialog.winfo_screenheight()
+        # _place_dialog умножает высоту на масштаб окна — оставляем запас.
+        scaling = dialog._get_window_scaling() or 1
+        max_h = max(360, int(screen_h / scaling) - 80)
+        # Заголовок, кнопка «Закрыть» и поля вокруг текста.
+        height = min(body.winfo_reqheight() + 168, max_h)
+        _center_dialog(dialog, self.root, 640, height)
 
     def _on_search(self):
         if self._suppress_search:
