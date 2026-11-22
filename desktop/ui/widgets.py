@@ -119,11 +119,23 @@ class DarkTableFrame(ctk.CTkFrame):
 
         self.tree.pack(fill='both', expand=True)
 
+        # Ширины заданы для масштаба 100%. ttk их сам не увеличивает,
+        # когда Windows или customtkinter меняют масштаб интерфейса.
+        self._base_widths = {}
+        self._base_minwidth = 60
+        self._column_scale = self._get_widget_scaling()
         for col in (columns or ()):
             width = (column_widths or {}).get(col, 120)
             text = (headings or {}).get(col, col)
+            self._base_widths[col] = width
             self.tree.heading(col, text=text, anchor='w')
-            self.tree.column(col, width=width, minwidth=60, anchor='w', stretch=True)
+            self.tree.column(
+                col,
+                width=self._scaled_column(width, self._column_scale),
+                minwidth=self._scaled_column(self._base_minwidth, self._column_scale),
+                anchor='w',
+                stretch=True,
+            )
 
         # Разделители между столбцами: рисуются самим ttk рамками ячеек
         # (см. ColumnSeparatorPlugin), никаких оверлеев над таблицей.
@@ -142,6 +154,26 @@ class DarkTableFrame(ctk.CTkFrame):
         # Перекраска при переключении темы.
         toplevel = self.winfo_toplevel()
         toplevel.bind('<<ThemeChanged>>', self._on_theme_event, add='+')
+
+    def _scaled_column(self, width: int, scale: float) -> int:
+        return max(1, round(width * scale))
+
+    def _set_scaling(self, new_widget_scaling, new_window_scaling):
+        super()._set_scaling(new_widget_scaling, new_window_scaling)
+        if not getattr(self, '_base_widths', None):
+            return
+        previous = getattr(self, '_column_scale', None) or new_widget_scaling
+        if abs(previous - new_widget_scaling) >= 0.01:
+            # Берём исходную ширину, а не текущую: ttk затирает её,
+            # когда колонки растягиваются на свободное место окна.
+            for col, base in self._base_widths.items():
+                self.tree.column(
+                    col,
+                    width=self._scaled_column(base, new_widget_scaling),
+                    minwidth=self._scaled_column(self._base_minwidth, new_widget_scaling),
+                )
+            self._column_scale = new_widget_scaling
+        theme.apply_ttk_theme()
 
     # ------------------------------------------------------------- mousewheel
     @staticmethod

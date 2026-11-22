@@ -252,9 +252,35 @@ def _walk(widget: tk.Misc):
         yield from _walk(child)
 
 
+# Размеры таблицы при масштабе 100%. Отрицательный кегль — пиксели,
+# как у customtkinter: от масштаба Windows они не зависят сами по себе.
+_TREE_ROW_PX = 28
+_TREE_BODY_PX = 12
+_TREE_HEAD_PX = 13
+_TREE_PAD_X = 8
+_TREE_PAD_Y = 6
+
+
+def interface_scale(widget=None) -> float:
+    """Множитель интерфейса: DPI монитора и пользовательский масштаб CTk."""
+    try:
+        from customtkinter.windows.widgets.scaling.scaling_tracker import ScalingTracker
+        target = widget if widget is not None else tk._default_root
+        if target is not None:
+            return max(float(ScalingTracker.get_widget_scaling(target)), 0.4)
+    except (KeyError, tk.TclError, TypeError, ValueError):
+        pass
+    return 1.0
+
+
+def _scaled_px(value: int, scale: float) -> int:
+    return max(1, round(value * scale))
+
+
 def apply_ttk_theme() -> None:
-    """Настроить стили ttk (Treeview) под текущую тему."""
+    """Настроить стили ttk (Treeview) под текущую тему и масштаб."""
     pal = palette()
+    scale = interface_scale()
     style = ttk.Style()
     try:
         # theme_use шлёт <<ThemeChanged>> каждому виджету. Повторный вызов
@@ -269,7 +295,8 @@ def apply_ttk_theme() -> None:
         background=pal.panel_bg,
         fieldbackground=pal.panel_bg,
         foreground=pal.text,
-        rowheight=28,
+        font=('TkDefaultFont', -_scaled_px(_TREE_BODY_PX, scale)),
+        rowheight=_scaled_px(_TREE_ROW_PX, scale),
         bordercolor=pal.border,
         lightcolor=pal.panel_bg,
         darkcolor=pal.panel_bg,
@@ -278,10 +305,11 @@ def apply_ttk_theme() -> None:
     # Разделители между столбцами: рисуем рамкой ячейки ``::text``
     # (borderwidth + orient='vertical' + bordercolor) — линии живут внутри
     # таблицы, не перекрывают текст и не требуют canvas-оверлеев.
+    border_px = _scaled_px(1, scale)
     try:
         style.element_options('Treeview.cell')
         style.configure('Treeview.Cell',
-                        borderwidth=1, relief='solid',
+                        borderwidth=border_px, relief='solid',
                         bordercolor=pal.border, lightcolor=pal.border,
                         darkcolor=pal.border)
     except tk.TclError:
@@ -290,17 +318,17 @@ def apply_ttk_theme() -> None:
         'App.Treeview.Heading',
         background=pal.header_bg,
         foreground=pal.text,
-        font=('TkDefaultFont', 10, 'bold'),
+        font=('TkDefaultFont', -_scaled_px(_TREE_HEAD_PX, scale), 'bold'),
         bordercolor=pal.border,
         lightcolor=pal.header_bg,
         darkcolor=pal.header_bg,
         relief='flat',
-        padding=(8, 6),
+        padding=(_scaled_px(_TREE_PAD_X, scale), _scaled_px(_TREE_PAD_Y, scale)),
     )
     try:
         style.element_options('Treeheading.cell')
         style.configure('Treeview.HeadingCell',
-                        borderwidth=1, relief='solid',
+                        borderwidth=border_px, relief='solid',
                         bordercolor=pal.border, lightcolor=pal.border,
                         darkcolor=pal.border)
     except tk.TclError:
