@@ -148,7 +148,12 @@
                 android:id="@+id/btnMinus"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="−" />
+                android:contentDescription="Уменьшить количество"
+                android:text=""
+                app:icon="@drawable/ic_btn_minus"
+                app:iconGravity="textStart"
+                app:iconPadding="0dp"
+                app:iconSize="18dp" />
 
             <EditText
                 android:id="@+id/etQuantity"
@@ -165,7 +170,12 @@
                 android:id="@+id/btnPlus"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="+" />
+                android:contentDescription="Увеличить количество"
+                android:text=""
+                app:icon="@drawable/ic_btn_plus"
+                app:iconGravity="textStart"
+                app:iconPadding="0dp"
+                app:iconSize="18dp" />
 
         </LinearLayout>
 
@@ -174,7 +184,11 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="Сохранить" />
+            android:text="Сохранить"
+            app:icon="@drawable/ic_btn_save"
+            app:iconGravity="textStart"
+            app:iconPadding="8dp"
+            app:iconSize="18dp" />
 
         <TextView
             android:layout_width="wrap_content"
@@ -189,20 +203,32 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="Сменить тип" />
+            android:text="Сменить тип"
+            app:icon="@drawable/ic_btn_swap"
+            app:iconGravity="textStart"
+            app:iconPadding="8dp"
+            app:iconSize="18dp" />
 
         <Button
             android:id="@+id/btnMove"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Переместить" />
+            android:text="Переместить"
+            app:icon="@drawable/ic_btn_move"
+            app:iconGravity="textStart"
+            app:iconPadding="8dp"
+            app:iconSize="18dp" />
 
         <Button
             android:id="@+id/btnDelete"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:text="Удалить" />
+            android:text="Удалить"
+            app:icon="@drawable/ic_btn_delete"
+            app:iconGravity="textStart"
+            app:iconPadding="8dp"
+            app:iconSize="18dp" />
 
     </LinearLayout>
 

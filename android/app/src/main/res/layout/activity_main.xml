@@ -23,7 +23,8 @@
         style="@style/MainMenuButton"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="↑ Вверх"
+        android:text="Вверх"
+        app:icon="@drawable/ic_btn_up"
         android:enabled="false"
         app:layout_constraintTop_toBottomOf="@id/tvPath"
         app:layout_constraintStart_toStartOf="parent" />
@@ -35,6 +36,7 @@
         android:layout_height="wrap_content"
         android:layout_marginEnd="12dp"
         android:text="Обновить"
+        app:icon="@drawable/ic_btn_refresh"
         app:layout_constraintTop_toBottomOf="@id/tvPath"
         app:layout_constraintEnd_toStartOf="@id/btnServer" />
 
@@ -44,6 +46,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Сервер"
+        app:icon="@drawable/ic_btn_server"
         app:layout_constraintTop_toBottomOf="@id/tvPath"
         app:layout_constraintEnd_toEndOf="parent" />
 
@@ -54,6 +57,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
         android:text="QR-сканер"
+        app:icon="@drawable/ic_btn_qr"
         app:layout_constraintTop_toBottomOf="@id/btnUp"
         app:layout_constraintStart_toStartOf="parent" />
 
