@@ -13,8 +13,8 @@
         style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="Адрес"
-        app:helperText="LAN: 192.168.0.9:8000  ·  Tailscale: warehouse-server.tail96180b.ts.net:8000"
+        android:hint="@string/hint_address"
+        app:helperText="@string/hint_server_examples"
         app:helperTextEnabled="true">
 
         <com.google.android.material.textfield.TextInputEditText

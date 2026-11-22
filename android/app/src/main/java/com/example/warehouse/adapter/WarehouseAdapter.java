@@ -13,6 +13,7 @@ import androidx.core.content.ContextCompat;
 import com.example.warehouse.R;
 import com.example.warehouse.data.model.BoxContents;
 import com.example.warehouse.data.model.BoxNode;
+import com.example.warehouse.ui.Weights;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -87,8 +88,11 @@ public class WarehouseAdapter extends BaseAdapter {
 
         if (row.isBox) {
             title.setText(row.box.name);
-            String type = row.box.box_type_name != null ? row.box.box_type_name : "Ячейка";
-            subtitle.setText(type + " · вложенных: " + row.box.childrenCount());
+            String type = row.box.box_type_name != null
+                    ? row.box.box_type_name
+                    : context.getString(R.string.cell_fallback);
+            subtitle.setText(context.getString(
+                    R.string.box_subtitle, type, row.box.childrenCount()));
             icon.setImageDrawable(
                     ContextCompat.getDrawable(context, R.drawable.ic_box));
             chevron.setVisibility(View.VISIBLE);
@@ -98,12 +102,11 @@ public class WarehouseAdapter extends BaseAdapter {
             if (row.item.box_name != null) {
                 sb.append(row.item.box_name).append(" · ");
             }
-            sb.append("Кол-во: ").append(row.item.quantity);
+            sb.append(context.getString(R.string.item_qty, row.item.quantity));
             if (row.item.total_weight_g != null) {
-                sb.append(" · ").append(formatWeight(row.item.total_weight_g));
+                sb.append(" · ").append(Weights.format(context, row.item.total_weight_g));
             }
-            // Подсказка о доступных действиях: тап — редактировать, долго — удалить.
-            sb.append(" · тап — изменить, долгое нажатие — удалить");
+            sb.append(" · ").append(context.getString(R.string.item_actions_hint));
             subtitle.setText(sb);
             icon.setImageDrawable(
                     ContextCompat.getDrawable(context, R.drawable.ic_item));
@@ -111,12 +114,5 @@ public class WarehouseAdapter extends BaseAdapter {
         }
 
         return convertView;
-    }
-
-    private static String formatWeight(long grams) {
-        if (grams >= 1000) {
-            return String.format("%.3f кг", grams / 1000.0);
-        }
-        return grams + " г";
     }
 }

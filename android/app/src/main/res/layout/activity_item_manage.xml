@@ -60,20 +60,20 @@
                         android:layout_width="0dp"
                         android:layout_marginEnd="8dp"
                         android:layout_weight="1"
-                        android:text="Позиция" />
+                        android:text="@string/label_position" />
 
                     <TextView
                         style="@style/ItemInfoLabel"
                         android:layout_width="0dp"
                         android:layout_marginEnd="8dp"
                         android:layout_weight="1"
-                        android:text="Вес" />
+                        android:text="@string/label_weight" />
 
                     <TextView
                         style="@style/ItemInfoLabel"
                         android:layout_width="0dp"
                         android:layout_weight="1.2"
-                        android:text="Общий вес" />
+                        android:text="@string/label_total_weight" />
 
                 </LinearLayout>
 
@@ -118,7 +118,7 @@
 
                 <TextView
                     style="@style/ItemInfoLabel"
-                    android:text="Местоположение" />
+                    android:text="@string/label_location" />
 
                 <TextView
                     android:id="@+id/tvLocation"
@@ -133,7 +133,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:text="Количество"
+            android:text="@string/label_quantity"
             android:textSize="14sp"
             android:textStyle="bold" />
 
@@ -148,7 +148,7 @@
                 android:id="@+id/btnMinus"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:contentDescription="Уменьшить количество"
+                android:contentDescription="@string/cd_decrease"
                 android:text=""
                 app:icon="@drawable/ic_btn_minus"
                 app:iconGravity="textStart"
@@ -170,7 +170,7 @@
                 android:id="@+id/btnPlus"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:contentDescription="Увеличить количество"
+                android:contentDescription="@string/cd_increase"
                 android:text=""
                 app:icon="@drawable/ic_btn_plus"
                 app:iconGravity="textStart"
@@ -184,7 +184,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="Сохранить"
+            android:text="@string/action_save"
             app:icon="@drawable/ic_btn_save"
             app:iconGravity="textStart"
             app:iconPadding="8dp"
@@ -194,7 +194,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="24dp"
-            android:text="Действия"
+            android:text="@string/label_actions"
             android:textSize="14sp"
             android:textStyle="bold" />
 
@@ -203,7 +203,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="Сменить тип"
+            android:text="@string/action_change_type"
             app:icon="@drawable/ic_btn_swap"
             app:iconGravity="textStart"
             app:iconPadding="8dp"
@@ -213,7 +213,7 @@
             android:id="@+id/btnMove"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Переместить"
+            android:text="@string/action_move"
             app:icon="@drawable/ic_btn_move"
             app:iconGravity="textStart"
             app:iconPadding="8dp"
@@ -224,7 +224,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:text="Удалить"
+            android:text="@string/action_delete"
             app:icon="@drawable/ic_btn_delete"
             app:iconGravity="textStart"
             app:iconPadding="8dp"

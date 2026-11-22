@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">WarehouseApp</string>
+    <string name="title_scan">QR scan</string>
+    <string name="title_item">Item</string>
+
+    <string name="action_up">Up</string>
+    <string name="action_refresh">Refresh</string>
+    <string name="action_server">Server</string>
+    <string name="action_scan">QR scanner</string>
+    <string name="action_settings">Settings</string>
+    <string name="action_save">Save</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_reset">Reset</string>
+    <string name="action_close">Close</string>
+    <string name="action_find">Find</string>
+    <string name="action_change_type">Change type</string>
+    <string name="action_move">Move</string>
+    <string name="action_manual">Enter code manually</string>
+
+    <string name="warehouse_root">Warehouse</string>
+    <string name="settings_title">Settings</string>
+    <string name="settings_dark_theme">Dark theme</string>
+    <string name="settings_language">Interface language</string>
+    <string name="language_russian">Русский</string>
+    <string name="language_english">English</string>
+
+    <string name="hint_address">Address</string>
+    <string name="hint_server_examples">LAN: 192.168.0.9:8000  ·  Tailscale: warehouse-server.tail96180b.ts.net:8000</string>
+    <string name="server_address_empty">Address cannot be empty</string>
+    <string name="server_set">Server: %1$s</string>
+    <string name="server_reset">Using the default address: %1$s</string>
+
+    <string name="delete_item_title">Delete item?</string>
+    <string name="delete_item_message">%1$s (%2$d pcs, position #%3$d) will be permanently deleted.</string>
+    <string name="toast_item_deleted">Item deleted</string>
+    <string name="error_load_tree">Could not load the tree: %1$d</string>
+    <string name="error_network">Network unavailable: %1$s</string>
+    <string name="error_delete">Could not delete: %1$d</string>
+    <string name="error_box_not_in_tree">Container was not found in the loaded tree — refresh</string>
+    <string name="toast_scanned_type">Item type scanned — see the scanner details</string>
+    <string name="error_unboxed">Could not load items without a container: %1$d</string>
+    <string name="no_location">No location</string>
+    <string name="error_load_contents">Could not load contents: %1$d</string>
+
+    <string name="label_position">Position</string>
+    <string name="label_weight">Weight</string>
+    <string name="label_total_weight">Total weight</string>
+    <string name="label_location">Location</string>
+    <string name="label_quantity">Quantity</string>
+    <string name="label_actions">Actions</string>
+    <string name="cd_decrease">Decrease quantity</string>
+    <string name="cd_increase">Increase quantity</string>
+    <string name="no_container">No container</string>
+    <string name="error_load_item">Could not load the item: %1$d</string>
+    <string name="qty_min">Quantity must be at least 1</string>
+    <string name="qty_same">Quantity is unchanged</string>
+    <string name="error_load_types">Could not load types: %1$d</string>
+    <string name="types_empty">The type list is empty</string>
+    <string name="dialog_new_type">New item type</string>
+    <string name="action_remove_from_container">Remove from container</string>
+    <string name="current_box_suffix">\u0020\u0020(current)</string>
+    <string name="dialog_move_title">Move to container</string>
+    <string name="toast_saved">Saved</string>
+    <string name="error_detail">Error: %1$s</string>
+    <string name="error_request">Request failed: %1$d</string>
+
+    <string name="cell_fallback">Cell</string>
+    <string name="box_subtitle">%1$s · nested: %2$d</string>
+    <string name="item_qty">Qty: %1$d</string>
+    <string name="item_actions_hint">tap to edit, long-press to delete</string>
+    <string name="weight_kg">%1$.3f kg</string>
+    <string name="weight_g">%1$d g</string>
+
+    <string name="scan_hint">Point the camera at an item or container QR code</string>
+    <string name="camera_denied">No camera access. Allow it in settings or enter the code manually.</string>
+    <string name="camera_failed">Could not start the camera: %1$s</string>
+    <string name="scan_foreign">This is not a warehouse QR code. Expected %1$s:item|type|box:&lt;id&gt;</string>
+    <string name="scan_request">Request %1$s …</string>
+    <string name="scan_not_found">The server found nothing for code %1$s (HTTP %2$d)</string>
+    <string name="scan_found">Found: %1$s</string>
+    <string name="result_fallback">Result</string>
+    <string name="kind_item">item</string>
+    <string name="kind_type">item type</string>
+    <string name="kind_box">container</string>
+    <string name="kind_object">object</string>
+    <string name="scan_item_type">Item type: %1$s</string>
+    <string name="scan_quantity">Quantity: %1$d</string>
+    <string name="scan_unit_weight">Unit weight: %1$s</string>
+    <string name="scan_total_weight">Total weight: %1$s</string>
+    <string name="scan_location">Location: %1$s</string>
+    <string name="scan_no_location">no location</string>
+    <string name="scan_position_id">Position ID: %1$d</string>
+    <string name="scan_type_intro">Item type record</string>
+    <string name="scan_name">Name: %1$s</string>
+    <string name="scan_type_id">Type ID: %1$d</string>
+    <string name="scan_box_type">Container type: %1$s</string>
+    <string name="scan_box_id">Container ID: %1$d</string>
+    <string name="scan_no_items">No items</string>
+    <string name="scan_item_count">Items: %1$d</string>
+    <string name="scan_item_line">• %1$s × %2$d (%3$s)</string>
+    <string name="scan_child_count">Nested containers: %1$d</string>
+    <string name="scan_child_line">• %1$s (%2$s)</string>
+    <string name="scan_unexpected">The server returned an unexpected response.</string>
+    <string name="manual_message">Enter the QR code manually if the camera is unavailable.</string>
+    <string name="scan_bad_format">Invalid format. Expected %1$s:item|type|box:&lt;id&gt;</string>
+    <string name="toast_bad_format">Invalid code format</string>
+</resources>

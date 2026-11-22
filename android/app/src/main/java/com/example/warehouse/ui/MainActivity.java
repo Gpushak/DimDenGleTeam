@@ -14,12 +14,15 @@ import androidx.appcompat.app.AppCompatActivity;
 import com.example.warehouse.BuildConfig;
 import com.example.warehouse.R;
 import com.example.warehouse.adapter.WarehouseAdapter;
+import com.example.warehouse.data.AppSettings;
 import com.example.warehouse.data.api.ApiClient;
 import com.example.warehouse.data.api.ServerConfig;
 import com.example.warehouse.data.model.BoxContents;
 import com.example.warehouse.data.model.BoxNode;
 import com.example.warehouse.data.model.ItemSummary;
 import com.example.warehouse.databinding.ActivityMainBinding;
+import com.google.android.material.button.MaterialButtonToggleGroup;
+import com.google.android.material.materialswitch.MaterialSwitch;
 import com.google.android.material.textfield.TextInputEditText;
 
 import java.util.ArrayDeque;
@@ -36,6 +39,9 @@ import retrofit2.Response;
  * приложение сразу открывает структуру склада, сервер доступен без токена.
  */
 public class MainActivity extends AppCompatActivity {
+
+    /** После смены темы или языка активность пересоздаётся — диалог открываем снова. */
+    private static final String EXTRA_OPEN_SETTINGS = "extra_open_settings";
 
     private ActivityMainBinding binding;
     private WarehouseAdapter adapter;
@@ -88,6 +94,7 @@ public class MainActivity extends AppCompatActivity {
         binding.btnRefresh.setOnClickListener(v -> refresh());
         binding.btnUp.setOnClickListener(v -> goUp());
         binding.btnServer.setOnClickListener(v -> showServerDialog());
+        binding.btnSettings.setOnClickListener(v -> showSettingsDialog());
         binding.btnScan.setOnClickListener(
                 v -> scanLauncher.launch(new Intent(this, ScanActivity.class)));
         binding.swipeRefresh.setOnRefreshListener(this::refresh);
@@ -116,6 +123,11 @@ public class MainActivity extends AppCompatActivity {
 
         updatePathLabel();
         loadTree();
+
+        if (getIntent().getBooleanExtra(EXTRA_OPEN_SETTINGS, false)) {
+            getIntent().removeExtra(EXTRA_OPEN_SETTINGS);
+            binding.getRoot().post(this::showSettingsDialog);
+        }
     }
 
     /**
@@ -159,7 +171,7 @@ public class MainActivity extends AppCompatActivity {
                     }
                     renderLevel();
                 } else {
-                    toast("Ошибка загрузки дерева: " + response.code());
+                    toast(getString(R.string.error_load_tree, response.code()));
                 }
             }
 
@@ -167,7 +179,7 @@ public class MainActivity extends AppCompatActivity {
             public void onFailure(Call<List<BoxNode>> call, Throwable t) {
                 setLoading(false);
                 binding.swipeRefresh.setRefreshing(false);
-                toast("Сеть недоступна: " + t.getMessage());
+                toast(getString(R.string.error_network, t.getMessage()));
             }
         });
     }
@@ -196,28 +208,27 @@ public class MainActivity extends AppCompatActivity {
      */
     private void confirmDeleteFromList(BoxContents.ItemRow item) {
         new AlertDialog.Builder(this)
-                .setTitle("Удалить товар?")
-                .setMessage(item.item_type_name + " (" + item.quantity
-                        + " шт., позиция #" + item.item_id
-                        + ") будет удалена без возможности восстановления.")
-                .setPositiveButton("Удалить", (dialog, which) ->
+                .setTitle(R.string.delete_item_title)
+                .setMessage(getString(R.string.delete_item_message,
+                        item.item_type_name, item.quantity, item.item_id))
+                .setPositiveButton(R.string.action_delete, (dialog, which) ->
                         ApiClient.api().deleteItem(item.item_id).enqueue(new Callback<Void>() {
                             @Override
                             public void onResponse(Call<Void> call, Response<Void> response) {
                                 if (response.isSuccessful()) {
-                                    toast("Товар удалён");
+                                    toast(getString(R.string.toast_item_deleted));
                                     refreshCurrentLevel();
                                 } else {
-                                    toast("Ошибка удаления: " + response.code());
+                                    toast(getString(R.string.error_delete, response.code()));
                                 }
                             }
 
                             @Override
                             public void onFailure(Call<Void> call, Throwable t) {
-                                toast("Сеть недоступна: " + t.getMessage());
+                                toast(getString(R.string.error_network, t.getMessage()));
                             }
                         }))
-                .setNegativeButton("Отмена", null)
+                .setNegativeButton(R.string.action_cancel, null)
                 .show();
     }
 
@@ -250,10 +261,10 @@ public class MainActivity extends AppCompatActivity {
                 loadContents(target);
                 return;
             }
-            toast("Контейнер не найден в загруженном дереве — обновите");
+            toast(getString(R.string.error_box_not_in_tree));
             return;
         }
-        toast("Отсканирован тип товара — см. сведения в сканере");
+        toast(getString(R.string.toast_scanned_type));
     }
 
     /** Ищет контейнер по id в дереве, загруженном из /boxes/tree. */
@@ -320,7 +331,7 @@ public class MainActivity extends AppCompatActivity {
                     return;
                 }
                 if (!response.isSuccessful() || response.body() == null) {
-                    toast("Ошибка загрузки товаров без контейнера: " + response.code());
+                    toast(getString(R.string.error_unboxed, response.code()));
                     return;
                 }
                 List<WarehouseAdapter.Row> combined = new ArrayList<>();
@@ -340,12 +351,12 @@ public class MainActivity extends AppCompatActivity {
                 if (generation != unboxedGeneration || !path.isEmpty()) {
                     return;
                 }
-                toast("Сеть недоступна: " + t.getMessage());
+                toast(getString(R.string.error_network, t.getMessage()));
             }
         });
     }
 
-    private static BoxContents.ItemRow toUnboxedRow(ItemSummary summary) {
+    private BoxContents.ItemRow toUnboxedRow(ItemSummary summary) {
         BoxContents.ItemRow row = new BoxContents.ItemRow();
         row.item_id = summary.id;
         row.item_type_id = summary.item_type_id;
@@ -353,7 +364,7 @@ public class MainActivity extends AppCompatActivity {
         row.weight_g = summary.weight_g;
         row.quantity = summary.quantity;
         row.total_weight_g = summary.total_weight_g;
-        row.box_name = "Без расположения";
+        row.box_name = getString(R.string.no_location);
         return row;
     }
 
@@ -398,7 +409,7 @@ public class MainActivity extends AppCompatActivity {
                             }
                             adapter.setRows(rows);
                         } else {
-                            toast("Ошибка загрузки содержимого: " + response.code());
+                            toast(getString(R.string.error_load_contents, response.code()));
                         }
                     }
 
@@ -406,7 +417,7 @@ public class MainActivity extends AppCompatActivity {
                     public void onFailure(Call<BoxContents> call, Throwable t) {
                         setLoading(false);
                         binding.swipeRefresh.setRefreshing(false);
-                        toast("Сеть недоступна: " + t.getMessage());
+                        toast(getString(R.string.error_network, t.getMessage()));
                     }
                 });
     }
@@ -431,7 +442,7 @@ public class MainActivity extends AppCompatActivity {
     private void updatePathLabel() {
         binding.btnUp.setEnabled(!path.isEmpty());
 
-        StringBuilder sb = new StringBuilder("Склад");
+        StringBuilder sb = new StringBuilder(getString(R.string.warehouse_root));
         for (BoxNode node : path) {
             sb.append(" / ").append(node.name);
         }
@@ -457,26 +468,69 @@ public class MainActivity extends AppCompatActivity {
         }
 
         new AlertDialog.Builder(this)
-                .setTitle("Сервер")
+                .setTitle(R.string.action_server)
                 .setView(view)
-                .setPositiveButton("Сохранить", (DialogInterface dialog, int which) -> {
+                .setPositiveButton(R.string.action_save, (DialogInterface dialog, int which) -> {
                     CharSequence typed = input.getText();
                     String url = ServerConfig.normalize(typed != null ? typed.toString() : "");
                     if (url.isEmpty()) {
-                        toast("Адрес не может быть пустым");
+                        toast(getString(R.string.server_address_empty));
                         return;
                     }
                     ServerConfig.setBaseUrl(this, url);
-                    toast("Сервер: " + url);
+                    toast(getString(R.string.server_set, url));
                     loadTree();
                 })
-                .setNeutralButton("Сбросить", (DialogInterface dialog, int which) -> {
+                .setNeutralButton(R.string.action_reset, (DialogInterface dialog, int which) -> {
                     ServerConfig.clearBaseUrl(this);
-                    toast("Использован адрес по умолчанию: "
-                            + BuildConfig.API_BASE_URL);
+                    toast(getString(R.string.server_reset, BuildConfig.API_BASE_URL));
                     loadTree();
                 })
-                .setNegativeButton("Отмена", null)
+                .setNegativeButton(R.string.action_cancel, null)
                 .show();
+    }
+
+    /** Тема применяется сразу, язык переключает весь интерфейс. */
+    private void showSettingsDialog() {
+        View view = getLayoutInflater().inflate(R.layout.dialog_settings, null);
+        MaterialSwitch themeSwitch = view.findViewById(R.id.switchTheme);
+        MaterialButtonToggleGroup language = view.findViewById(R.id.toggleLanguage);
+
+        themeSwitch.setChecked(AppSettings.isNightNow(this));
+        themeSwitch.setOnCheckedChangeListener((button, checked) -> {
+            if (checked == AppSettings.isNightNow(this)) {
+                AppSettings.setDarkTheme(this, checked);
+                return;
+            }
+            keepSettingsOpen();
+            AppSettings.setDarkTheme(this, checked);
+        });
+
+        language.check(AppSettings.LANG_EN.equals(AppSettings.getLanguage(this))
+                ? R.id.btnLangEn
+                : R.id.btnLangRu);
+        language.addOnButtonCheckedListener((group, checkedId, isChecked) -> {
+            if (!isChecked) {
+                return;
+            }
+            String lang = checkedId == R.id.btnLangEn
+                    ? AppSettings.LANG_EN
+                    : AppSettings.LANG_RU;
+            if (lang.equals(AppSettings.getLanguage(this))) {
+                return;
+            }
+            keepSettingsOpen();
+            AppSettings.setLanguage(this, lang);
+        });
+
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.settings_title)
+                .setView(view)
+                .setNegativeButton(R.string.action_close, null)
+                .show();
+    }
+
+    private void keepSettingsOpen() {
+        getIntent().putExtra(EXTRA_OPEN_SETTINGS, true);
     }
 }

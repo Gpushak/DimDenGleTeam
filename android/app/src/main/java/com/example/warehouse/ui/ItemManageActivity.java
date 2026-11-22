@@ -8,6 +8,7 @@ import android.widget.Toast;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
+import com.example.warehouse.R;
 import com.example.warehouse.data.api.ApiClient;
 import com.example.warehouse.data.api.ItemUpdateBody;
 import com.example.warehouse.data.model.BoxNode;
@@ -81,14 +82,14 @@ public class ItemManageActivity extends AppCompatActivity {
                     item = response.body();
                     bindItem();
                 } else {
-                    toast("Ошибка загрузки товара: " + response.code());
+                    toast(getString(R.string.error_load_item, response.code()));
                 }
             }
 
             @Override
             public void onFailure(Call<ItemSummary> call, Throwable t) {
                 setLoading(false);
-                toast("Сеть недоступна: " + t.getMessage());
+                toast(getString(R.string.error_network, t.getMessage()));
             }
         });
     }
@@ -96,11 +97,10 @@ public class ItemManageActivity extends AppCompatActivity {
     private void bindItem() {
         binding.tvTitle.setText(item.item_type_name);
         binding.tvPosition.setText("#" + item.id);
-        binding.tvWeight.setText(item.weight_g != null ? formatWeight(item.weight_g) : "—");
-        binding.tvTotalWeight.setText(
-                item.total_weight_g != null ? formatWeight(item.total_weight_g) : "—");
+        binding.tvWeight.setText(Weights.format(this, item.weight_g));
+        binding.tvTotalWeight.setText(Weights.format(this, item.total_weight_g));
         boolean hasBox = item.box_name != null && !item.box_name.isEmpty();
-        binding.tvLocation.setText(hasBox ? item.box_name : "Без контейнера");
+        binding.tvLocation.setText(hasBox ? item.box_name : getString(R.string.no_container));
         binding.etQuantity.setText(String.valueOf(item.quantity));
     }
 
@@ -124,11 +124,11 @@ public class ItemManageActivity extends AppCompatActivity {
         }
         int quantity = parseQuantity();
         if (quantity < 1) {
-            toast("Количество должно быть не меньше 1");
+            toast(getString(R.string.qty_min));
             return;
         }
         if (quantity == item.quantity) {
-            toast("Количество не изменилось");
+            toast(getString(R.string.qty_same));
             return;
         }
         patch(ItemUpdateBody.quantity(quantity), true);
@@ -146,33 +146,33 @@ public class ItemManageActivity extends AppCompatActivity {
                                    Response<List<ItemTypeSummary>> response) {
                 setLoading(false);
                 if (!response.isSuccessful() || response.body() == null) {
-                    toast("Ошибка загрузки типов: " + response.code());
+                    toast(getString(R.string.error_load_types, response.code()));
                     return;
                 }
                 List<ItemTypeSummary> types = response.body();
                 if (types.isEmpty()) {
-                    toast("Справочник типов пуст");
+                    toast(getString(R.string.types_empty));
                     return;
                 }
                 CharSequence[] labels = new CharSequence[types.size()];
                 for (int i = 0; i < types.size(); i++) {
                     ItemTypeSummary t = types.get(i);
                     labels[i] = t.weight_g != null
-                            ? t.name + " (" + formatWeight(t.weight_g) + ")"
+                            ? t.name + " (" + Weights.format(ItemManageActivity.this, t.weight_g) + ")"
                             : t.name;
                 }
                 new AlertDialog.Builder(ItemManageActivity.this)
-                        .setTitle("Новый тип товара")
+                        .setTitle(R.string.dialog_new_type)
                         .setItems(labels, (dialog, which) ->
                                 patch(ItemUpdateBody.itemType(types.get(which).id), true))
-                        .setNegativeButton("Отмена", null)
+                        .setNegativeButton(R.string.action_cancel, null)
                         .show();
             }
 
             @Override
             public void onFailure(Call<List<ItemTypeSummary>> call, Throwable t) {
                 setLoading(false);
-                toast("Сеть недоступна: " + t.getMessage());
+                toast(getString(R.string.error_network, t.getMessage()));
             }
         });
     }
@@ -192,7 +192,7 @@ public class ItemManageActivity extends AppCompatActivity {
                                    Response<List<BoxNode>> response) {
                 setLoading(false);
                 if (!response.isSuccessful() || response.body() == null) {
-                    toast("Ошибка загрузки дерева: " + response.code());
+                    toast(getString(R.string.error_load_tree, response.code()));
                     return;
                 }
                 List<BoxNode> flat = new ArrayList<>();
@@ -201,27 +201,28 @@ public class ItemManageActivity extends AppCompatActivity {
 
                 // +1 пункт «без контейнера» в начале списка.
                 CharSequence[] labels = new CharSequence[flat.size() + 1];
-                labels[0] = "Вынуть из контейнера";
+                labels[0] = getString(R.string.action_remove_from_container);
                 for (int i = 0; i < flat.size(); i++) {
                     BoxNode node = flat.get(i);
                     boolean here = item.box_id != null && item.box_id == node.id;
-                    labels[i + 1] = paths.get(i) + (here ? "  (текущий)" : "");
+                    labels[i + 1] = paths.get(i)
+                            + (here ? getString(R.string.current_box_suffix) : "");
                 }
 
                 new AlertDialog.Builder(ItemManageActivity.this)
-                        .setTitle("Переместить в контейнер")
+                        .setTitle(R.string.dialog_move_title)
                         .setItems(labels, (dialog, which) -> {
                             Integer targetBoxId = which == 0 ? null : flat.get(which - 1).id;
                             patch(ItemUpdateBody.moveTo(targetBoxId), true);
                         })
-                        .setNegativeButton("Отмена", null)
+                        .setNegativeButton(R.string.action_cancel, null)
                         .show();
             }
 
             @Override
             public void onFailure(Call<List<BoxNode>> call, Throwable t) {
                 setLoading(false);
-                toast("Сеть недоступна: " + t.getMessage());
+                toast(getString(R.string.error_network, t.getMessage()));
             }
         });
     }
@@ -245,11 +246,11 @@ public class ItemManageActivity extends AppCompatActivity {
             return;
         }
         new AlertDialog.Builder(this)
-                .setTitle("Удалить товар?")
-                .setMessage(item.item_type_name + " (" + item.quantity + " шт., позиция #"
-                        + item.id + ") будет удалена без возможности восстановления.")
-                .setPositiveButton("Удалить", (dialog, which) -> deleteItem())
-                .setNegativeButton("Отмена", null)
+                .setTitle(R.string.delete_item_title)
+                .setMessage(getString(R.string.delete_item_message,
+                        item.item_type_name, item.quantity, item.id))
+                .setPositiveButton(R.string.action_delete, (dialog, which) -> deleteItem())
+                .setNegativeButton(R.string.action_cancel, null)
                 .show();
     }
 
@@ -260,20 +261,20 @@ public class ItemManageActivity extends AppCompatActivity {
             public void onResponse(Call<Void> call, Response<Void> response) {
                 setLoading(false);
                 if (response.isSuccessful()) {
-                    toast("Товар удалён");
+                    toast(getString(R.string.toast_item_deleted));
                     Intent data = new Intent();
                     data.putExtra(RESULT_CHANGED, true);
                     setResult(RESULT_OK, data);
                     finish();
                 } else {
-                    toast("Ошибка удаления: " + response.code());
+                    toast(getString(R.string.error_delete, response.code()));
                 }
             }
 
             @Override
             public void onFailure(Call<Void> call, Throwable t) {
                 setLoading(false);
-                toast("Сеть недоступна: " + t.getMessage());
+                toast(getString(R.string.error_network, t.getMessage()));
             }
         });
     }
@@ -296,7 +297,7 @@ public class ItemManageActivity extends AppCompatActivity {
                     if (changed) {
                         setResult(RESULT_OK, new Intent().putExtra(RESULT_CHANGED, true));
                     }
-                    toast("Сохранено");
+                    toast(getString(R.string.toast_saved));
                 } else {
                     toast(readError(response));
                 }
@@ -305,13 +306,13 @@ public class ItemManageActivity extends AppCompatActivity {
             @Override
             public void onFailure(Call<ItemSummary> call, Throwable t) {
                 setLoading(false);
-                toast("Сеть недоступна: " + t.getMessage());
+                toast(getString(R.string.error_network, t.getMessage()));
             }
         });
     }
 
     /** Извлекает detail из тела ошибки FastAPI (409/404 и т.п.), иначе код. */
-    private static String readError(Response<?> response) {
+    private String readError(Response<?> response) {
         try {
             if (response.errorBody() != null) {
                 String json = response.errorBody().string();
@@ -320,21 +321,14 @@ public class ItemManageActivity extends AppCompatActivity {
                     int start = json.indexOf('"', json.indexOf(':', idx) + 1) + 1;
                     int end = json.indexOf('"', start);
                     if (start > 0 && end > start) {
-                        return "Ошибка: " + json.substring(start, end);
+                        return getString(R.string.error_detail, json.substring(start, end));
                     }
                 }
             }
         } catch (Exception ignored) {
             // Не удалось разобрать тело — вернём код ниже.
         }
-        return "Ошибка запроса: " + response.code();
-    }
-
-    private static String formatWeight(long grams) {
-        if (grams >= 1000) {
-            return String.format("%.3f кг", grams / 1000.0);
-        }
-        return grams + " г";
+        return getString(R.string.error_request, response.code());
     }
 
     private void setLoading(boolean loading) {

@@ -23,6 +23,7 @@ import androidx.camera.core.Preview;
 import androidx.camera.lifecycle.ProcessCameraProvider;
 import androidx.core.content.ContextCompat;
 
+import com.example.warehouse.R;
 import com.example.warehouse.data.api.ApiClient;
 import com.example.warehouse.data.model.BoxContents;
 import com.example.warehouse.data.model.BoxSummary;
@@ -39,7 +40,6 @@ import com.google.mlkit.vision.barcode.common.Barcode;
 import com.google.mlkit.vision.common.InputImage;
 
 import java.util.List;
-import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -83,7 +83,7 @@ public class ScanActivity extends AppCompatActivity {
                         if (Boolean.TRUE.equals(granted)) {
                             startCamera();
                         } else {
-                            onCameraUnavailable("Нет доступа к камере. Разрешите его в настройках или введите код вручную.");
+                            onCameraUnavailable(getString(R.string.camera_denied));
                         }
                     });
 
@@ -140,7 +140,7 @@ public class ScanActivity extends AppCompatActivity {
                         preview, analysis);
 
             } catch (Exception e) {
-                onCameraUnavailable("Не удалось запустить камеру: " + e.getMessage());
+                onCameraUnavailable(getString(R.string.camera_failed, e.getMessage()));
             }
         }, ContextCompat.getMainExecutor(this));
     }
@@ -174,8 +174,7 @@ public class ScanActivity extends AppCompatActivity {
         QrCode code = QrCode.parse(raw);
         if (code == null) {
             if (gate.shouldReportForeign(raw)) {
-                runOnUiThread(() -> setStatus("Это не складской QR-код. Ожидается "
-                        + QrCode.SCHEME + ":item|type|box:<id>"));
+                runOnUiThread(() -> setStatus(getString(R.string.scan_foreign, QrCode.SCHEME)));
             }
             return;
         }
@@ -196,7 +195,7 @@ public class ScanActivity extends AppCompatActivity {
 
     private void lookup(QrCode code) {
         binding.progress.setVisibility(View.VISIBLE);
-        setStatus("Запрос " + code.payload() + " …");
+        setStatus(getString(R.string.scan_request, code.payload()));
 
         ApiClient.api().lookup(code.payload()).enqueue(new Callback<LookupResult>() {
             @Override
@@ -207,8 +206,7 @@ public class ScanActivity extends AppCompatActivity {
                 if (response.isSuccessful() && body != null) {
                     showResult(body);
                 } else {
-                    setStatus("Сервер не нашёл объект по коду " + code.payload()
-                            + " (HTTP " + response.code() + ")");
+                    setStatus(getString(R.string.scan_not_found, code.payload(), response.code()));
                     setResult(RESULT_CANCELED);
                     gate.onLookupFailed();
                 }
@@ -217,7 +215,7 @@ public class ScanActivity extends AppCompatActivity {
             @Override
             public void onFailure(Call<LookupResult> call, Throwable t) {
                 binding.progress.setVisibility(View.GONE);
-                setStatus("Сеть недоступна: " + t.getMessage());
+                setStatus(getString(R.string.error_network, t.getMessage()));
                 gate.onLookupFailed();
             }
         });
@@ -232,7 +230,7 @@ public class ScanActivity extends AppCompatActivity {
             return;
         }
 
-        setStatus("Найдено: " + describe(result));
+        setStatus(getString(R.string.scan_found, describe(result)));
         releaseResult(result);
 
         if ("item".equals(result.kind) && result.item != null) {
@@ -243,7 +241,7 @@ public class ScanActivity extends AppCompatActivity {
         resultDialog = new AlertDialog.Builder(this)
                 .setTitle(titleFor(result))
                 .setMessage(messageFor(result))
-                .setPositiveButton("Закрыть", (dialog, which) -> dialog.dismiss())
+                .setPositiveButton(R.string.action_close, (dialog, which) -> dialog.dismiss())
                 .setOnDismissListener(dialog -> gate.onDialogDismissed())
                 .show();
     }
@@ -280,20 +278,20 @@ public class ScanActivity extends AppCompatActivity {
         if ("box".equals(result.kind) && result.box != null) {
             return safe(result.box.name);
         }
-        return "Результат";
+        return getString(R.string.result_fallback);
     }
 
     private String describe(LookupResult result) {
         if ("item".equals(result.kind)) {
-            return "товар";
+            return getString(R.string.kind_item);
         }
         if ("type".equals(result.kind)) {
-            return "тип товара";
+            return getString(R.string.kind_type);
         }
         if ("box".equals(result.kind)) {
-            return "контейнер";
+            return getString(R.string.kind_box);
         }
-        return "объект";
+        return getString(R.string.kind_object);
     }
 
     private String messageFor(LookupResult result) {
@@ -301,50 +299,53 @@ public class ScanActivity extends AppCompatActivity {
 
         if ("item".equals(result.kind) && result.item != null) {
             ItemSummary it = result.item;
-            sb.append("Тип товара: ").append(safe(it.item_type_name)).append('\n');
-            sb.append("Количество: ").append(it.quantity).append('\n');
-            sb.append("Вес единицы: ").append(formatWeight(it.weight_g)).append('\n');
-            sb.append("Общий вес: ").append(formatWeight(it.total_weight_g)).append('\n');
-            sb.append("Расположение: ")
-                    .append(it.box_name != null && !it.box_name.isEmpty() ? it.box_name : "без расположения")
-                    .append('\n');
-            sb.append("\nID позиции: ").append(it.id);
+            String place = it.box_name != null && !it.box_name.isEmpty()
+                    ? it.box_name
+                    : getString(R.string.scan_no_location);
+            sb.append(getString(R.string.scan_item_type, safe(it.item_type_name))).append('\n');
+            sb.append(getString(R.string.scan_quantity, it.quantity)).append('\n');
+            sb.append(getString(R.string.scan_unit_weight, Weights.format(this, it.weight_g))).append('\n');
+            sb.append(getString(R.string.scan_total_weight, Weights.format(this, it.total_weight_g))).append('\n');
+            sb.append(getString(R.string.scan_location, place)).append('\n');
+            sb.append('\n').append(getString(R.string.scan_position_id, it.id));
 
         } else if ("type".equals(result.kind) && result.item_type != null) {
             ItemTypeSummary t = result.item_type;
-            sb.append("Справочная запись типа товара\n\n");
-            sb.append("Название: ").append(safe(t.name)).append('\n');
-            sb.append("Вес единицы: ").append(formatWeight(t.weight_g)).append('\n');
-            sb.append("\nID типа: ").append(t.id);
+            sb.append(getString(R.string.scan_type_intro)).append("\n\n");
+            sb.append(getString(R.string.scan_name, safe(t.name))).append('\n');
+            sb.append(getString(R.string.scan_unit_weight, Weights.format(this, t.weight_g))).append('\n');
+            sb.append('\n').append(getString(R.string.scan_type_id, t.id));
 
         } else if ("box".equals(result.kind) && result.box != null) {
             BoxSummary b = result.box;
-            sb.append("Тип контейнера: ").append(safe(b.box_type_name)).append('\n');
-            sb.append("ID контейнера: ").append(b.id).append("\n\n");
+            sb.append(getString(R.string.scan_box_type, safe(b.box_type_name))).append('\n');
+            sb.append(getString(R.string.scan_box_id, b.id)).append("\n\n");
 
             if (result.contents != null) {
                 if (result.contents.items.isEmpty()) {
-                    sb.append("Товаров нет\n");
+                    sb.append(getString(R.string.scan_no_items)).append('\n');
                 } else {
-                    sb.append("Товаров: ").append(result.contents.items.size()).append("\n\n");
+                    sb.append(getString(R.string.scan_item_count, result.contents.items.size()))
+                            .append("\n\n");
                     for (BoxContents.ItemRow item : result.contents.items) {
-                        sb.append("• ").append(safe(item.item_type_name))
-                                .append(" × ").append(item.quantity)
-                                .append(" (").append(formatWeight(item.total_weight_g)).append(")\n");
+                        sb.append(getString(R.string.scan_item_line,
+                                safe(item.item_type_name),
+                                item.quantity,
+                                Weights.format(this, item.total_weight_g))).append('\n');
                     }
                 }
 
                 if (!result.contents.child_boxes.isEmpty()) {
-                    sb.append("\nВложенных контейнеров: ")
-                            .append(result.contents.child_boxes.size()).append("\n");
+                    sb.append('\n').append(getString(
+                            R.string.scan_child_count, result.contents.child_boxes.size())).append('\n');
                     for (BoxContents.ChildBox child : result.contents.child_boxes) {
-                        sb.append("• ").append(safe(child.name))
-                                .append(" (").append(safe(child.box_type_name)).append(")\n");
+                        sb.append(getString(R.string.scan_child_line,
+                                safe(child.name), safe(child.box_type_name))).append('\n');
                     }
                 }
             }
         } else {
-            sb.append("Сервер вернул неожиданный ответ.");
+            sb.append(getString(R.string.scan_unexpected));
         }
 
         return sb.toString().trim();
@@ -352,16 +353,6 @@ public class ScanActivity extends AppCompatActivity {
 
     private static String safe(String value) {
         return (value == null || value.isEmpty()) ? "—" : value;
-    }
-
-    private static String formatWeight(Integer grams) {
-        if (grams == null) {
-            return "—";
-        }
-        if (grams >= 1000) {
-            return String.format(Locale.getDefault(), "%.3f кг", grams / 1000.0);
-        }
-        return grams + " г";
     }
 
     // ───────────────────────────────────────────────────────── ручной ввод
@@ -372,20 +363,20 @@ public class ScanActivity extends AppCompatActivity {
         input.setHint("qwentory:item:1");
 
         new AlertDialog.Builder(this)
-                .setTitle("Ввести код вручную")
-                .setMessage("Введите QR-код вручную, если камера недоступна.")
+                .setTitle(R.string.action_manual)
+                .setMessage(R.string.manual_message)
                 .setView(input)
-                .setPositiveButton("Найти", (DialogInterface dialog, int which) -> {
+                .setPositiveButton(R.string.action_find, (DialogInterface dialog, int which) -> {
                     QrCode code = QrCode.parse(input.getText().toString());
                     if (code == null) {
-                        setStatus("Неверный формат. Ожидается " + QrCode.SCHEME + ":item|type|box:<id>");
-                        toast("Неверный формат кода");
+                        setStatus(getString(R.string.scan_bad_format, QrCode.SCHEME));
+                        toast(getString(R.string.toast_bad_format));
                     } else {
                         gate.hold(code.payload());
                         lookup(code);
                     }
                 })
-                .setNegativeButton("Отмена", null)
+                .setNegativeButton(R.string.action_cancel, null)
                 .show();
     }
 

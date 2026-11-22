@@ -1,4 +1,109 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">WarehouseApp</string>
     <string name="title_scan">Сканирование QR-кода</string>
+    <string name="title_item">Товар</string>
+
+    <string name="action_up">Вверх</string>
+    <string name="action_refresh">Обновить</string>
+    <string name="action_server">Сервер</string>
+    <string name="action_scan">QR-сканер</string>
+    <string name="action_settings">Настройки</string>
+    <string name="action_save">Сохранить</string>
+    <string name="action_cancel">Отмена</string>
+    <string name="action_delete">Удалить</string>
+    <string name="action_reset">Сбросить</string>
+    <string name="action_close">Закрыть</string>
+    <string name="action_find">Найти</string>
+    <string name="action_change_type">Сменить тип</string>
+    <string name="action_move">Переместить</string>
+    <string name="action_manual">Ввести код вручную</string>
+
+    <string name="warehouse_root">Склад</string>
+    <string name="settings_title">Настройки</string>
+    <string name="settings_dark_theme">Тёмная тема</string>
+    <string name="settings_language">Язык интерфейса</string>
+    <string name="language_russian">Русский</string>
+    <string name="language_english">English</string>
+
+    <string name="hint_address">Адрес</string>
+    <string name="hint_server_examples">LAN: 192.168.0.9:8000  ·  Tailscale: warehouse-server.tail96180b.ts.net:8000</string>
+    <string name="server_address_empty">Адрес не может быть пустым</string>
+    <string name="server_set">Сервер: %1$s</string>
+    <string name="server_reset">Использован адрес по умолчанию: %1$s</string>
+
+    <string name="delete_item_title">Удалить товар?</string>
+    <string name="delete_item_message">%1$s (%2$d шт., позиция #%3$d) будет удалена без возможности восстановления.</string>
+    <string name="toast_item_deleted">Товар удалён</string>
+    <string name="error_load_tree">Ошибка загрузки дерева: %1$d</string>
+    <string name="error_network">Сеть недоступна: %1$s</string>
+    <string name="error_delete">Ошибка удаления: %1$d</string>
+    <string name="error_box_not_in_tree">Контейнер не найден в загруженном дереве — обновите</string>
+    <string name="toast_scanned_type">Отсканирован тип товара — см. сведения в сканере</string>
+    <string name="error_unboxed">Ошибка загрузки товаров без контейнера: %1$d</string>
+    <string name="no_location">Без расположения</string>
+    <string name="error_load_contents">Ошибка загрузки содержимого: %1$d</string>
+
+    <string name="label_position">Позиция</string>
+    <string name="label_weight">Вес</string>
+    <string name="label_total_weight">Общий вес</string>
+    <string name="label_location">Местоположение</string>
+    <string name="label_quantity">Количество</string>
+    <string name="label_actions">Действия</string>
+    <string name="cd_decrease">Уменьшить количество</string>
+    <string name="cd_increase">Увеличить количество</string>
+    <string name="no_container">Без контейнера</string>
+    <string name="error_load_item">Ошибка загрузки товара: %1$d</string>
+    <string name="qty_min">Количество должно быть не меньше 1</string>
+    <string name="qty_same">Количество не изменилось</string>
+    <string name="error_load_types">Ошибка загрузки типов: %1$d</string>
+    <string name="types_empty">Справочник типов пуст</string>
+    <string name="dialog_new_type">Новый тип товара</string>
+    <string name="action_remove_from_container">Вынуть из контейнера</string>
+    <string name="current_box_suffix">\u0020\u0020(текущий)</string>
+    <string name="dialog_move_title">Переместить в контейнер</string>
+    <string name="toast_saved">Сохранено</string>
+    <string name="error_detail">Ошибка: %1$s</string>
+    <string name="error_request">Ошибка запроса: %1$d</string>
+
+    <string name="cell_fallback">Ячейка</string>
+    <string name="box_subtitle">%1$s · вложенных: %2$d</string>
+    <string name="item_qty">Кол-во: %1$d</string>
+    <string name="item_actions_hint">тап — изменить, долгое нажатие — удалить</string>
+    <string name="weight_kg">%1$.3f кг</string>
+    <string name="weight_g">%1$d г</string>
+
+    <string name="scan_hint">Наведите камеру на QR-код товара или контейнера</string>
+    <string name="camera_denied">Нет доступа к камере. Разрешите его в настройках или введите код вручную.</string>
+    <string name="camera_failed">Не удалось запустить камеру: %1$s</string>
+    <string name="scan_foreign">Это не складской QR-код. Ожидается %1$s:item|type|box:&lt;id&gt;</string>
+    <string name="scan_request">Запрос %1$s …</string>
+    <string name="scan_not_found">Сервер не нашёл объект по коду %1$s (HTTP %2$d)</string>
+    <string name="scan_found">Найдено: %1$s</string>
+    <string name="result_fallback">Результат</string>
+    <string name="kind_item">товар</string>
+    <string name="kind_type">тип товара</string>
+    <string name="kind_box">контейнер</string>
+    <string name="kind_object">объект</string>
+    <string name="scan_item_type">Тип товара: %1$s</string>
+    <string name="scan_quantity">Количество: %1$d</string>
+    <string name="scan_unit_weight">Вес единицы: %1$s</string>
+    <string name="scan_total_weight">Общий вес: %1$s</string>
+    <string name="scan_location">Расположение: %1$s</string>
+    <string name="scan_no_location">без расположения</string>
+    <string name="scan_position_id">ID позиции: %1$d</string>
+    <string name="scan_type_intro">Справочная запись типа товара</string>
+    <string name="scan_name">Название: %1$s</string>
+    <string name="scan_type_id">ID типа: %1$d</string>
+    <string name="scan_box_type">Тип контейнера: %1$s</string>
+    <string name="scan_box_id">ID контейнера: %1$d</string>
+    <string name="scan_no_items">Товаров нет</string>
+    <string name="scan_item_count">Товаров: %1$d</string>
+    <string name="scan_item_line">• %1$s × %2$d (%3$s)</string>
+    <string name="scan_child_count">Вложенных контейнеров: %1$d</string>
+    <string name="scan_child_line">• %1$s (%2$s)</string>
+    <string name="scan_unexpected">Сервер вернул неожиданный ответ.</string>
+    <string name="manual_message">Введите QR-код вручную, если камера недоступна.</string>
+    <string name="scan_bad_format">Неверный формат. Ожидается %1$s:item|type|box:&lt;id&gt;</string>
+    <string name="toast_bad_format">Неверный формат кода</string>
 </resources>
