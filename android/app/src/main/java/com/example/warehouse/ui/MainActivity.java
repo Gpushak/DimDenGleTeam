@@ -435,7 +435,6 @@ public class MainActivity extends AppCompatActivity {
         for (BoxNode node : path) {
             sb.append(" / ").append(node.name);
         }
-        sb.append('\n').append(ServerConfig.getBaseUrl(this));
         binding.tvPath.setText(sb);
     }
 
