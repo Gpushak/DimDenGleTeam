@@ -2,6 +2,7 @@ package com.example.warehouse.ui;
 
 import android.content.Intent;
 import android.os.Bundle;
+import android.view.View;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AlertDialog;
@@ -94,22 +95,12 @@ public class ItemManageActivity extends AppCompatActivity {
 
     private void bindItem() {
         binding.tvTitle.setText(item.item_type_name);
-
-        StringBuilder info = new StringBuilder();
-        info.append("Позиция #").append(item.id);
-        if (item.weight_g != null) {
-            info.append(" · вес единицы: ").append(formatWeight(item.weight_g));
-        }
-        if (item.total_weight_g != null) {
-            info.append(" · общий вес: ").append(formatWeight(item.total_weight_g));
-        }
-        if (item.box_name != null) {
-            info.append("\nКонтейнер: ").append(item.box_name);
-        } else {
-            info.append("\nБез контейнера");
-        }
-        binding.tvInfo.setText(info);
-
+        binding.tvPosition.setText("#" + item.id);
+        binding.tvWeight.setText(item.weight_g != null ? formatWeight(item.weight_g) : "—");
+        binding.tvTotalWeight.setText(
+                item.total_weight_g != null ? formatWeight(item.total_weight_g) : "—");
+        boolean hasBox = item.box_name != null && !item.box_name.isEmpty();
+        binding.tvLocation.setText(hasBox ? item.box_name : "Без контейнера");
         binding.etQuantity.setText(String.valueOf(item.quantity));
     }
 
@@ -347,8 +338,7 @@ public class ItemManageActivity extends AppCompatActivity {
     }
 
     private void setLoading(boolean loading) {
-        // Прогресс-индикатора на экране нет — на время запроса блокируем кнопки
-        // и показываем статус в информационном тексте.
+        binding.progress.setVisibility(loading ? View.VISIBLE : View.GONE);
         binding.btnMinus.setEnabled(!loading);
         binding.btnPlus.setEnabled(!loading);
         binding.btnSaveQuantity.setEnabled(!loading);
@@ -356,9 +346,7 @@ public class ItemManageActivity extends AppCompatActivity {
         binding.btnMove.setEnabled(!loading);
         binding.btnDelete.setEnabled(!loading);
 
-        if (loading) {
-            binding.tvInfo.setText("Выполняется запрос…");
-        } else if (item != null) {
+        if (!loading && item != null) {
             bindItem();
         }
     }
